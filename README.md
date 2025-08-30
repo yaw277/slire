@@ -1052,13 +1052,10 @@ export function createExpenseQueries(repo: ExpenseRepo) {
       });
     },
 
-    countOverdueExpenses: async (daysOverdue: number) => {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - daysOverdue);
-
-      return await repo.count({
-        status: 'pending',
-        submittedAt: { $lt: cutoffDate },
+    findHighValueExpenses: async (minAmount: number) => {
+      return await repo.find({
+        status: 'approved',
+        totalClaim: { $gte: minAmount },
       });
     },
 
@@ -1068,29 +1065,32 @@ export function createExpenseQueries(repo: ExpenseRepo) {
   };
 }
 
+// ...export frequently used signature types
+type ExpenseQueries = ReturnType<typeof createExpenseQueries>;
+export type FindOverdueExpenses = ExpenseQueries['findOverdueExpenses'];
+export type FindHighValueExpenses = ExpenseQueries['findHighValueExpenses'];
+
 // Usage
-async function processOverdueExpenses(
+async function generateExpenseAnalysis(
   deps: {
-    findOverdueExpenses: ReturnType<
-      typeof createExpenseQueries
-    >['findOverdueExpenses'];
-    countOverdueExpenses: ReturnType<
-      typeof createExpenseQueries
-    >['countOverdueExpenses'];
+    findOverdueExpenses: FindOverdueExpenses;
+    findHighValueExpenses: FindHighValueExpenses;
   },
-  params: { daysOverdue: number }
+  params: { daysOverdue: number; minAmount: number }
 ) {
-  const expenses = await deps.findOverdueExpenses(params.daysOverdue);
-  const totalCount = await deps.countOverdueExpenses(params.daysOverdue);
+  const overdueExpenses = await deps.findOverdueExpenses(params.daysOverdue);
+  const highValueExpenses = await deps.findHighValueExpenses(params.minAmount);
 
   // Business logic focused on domain concepts, not queries
-  return processExpenseList(expenses, totalCount);
+  return analyzeExpensePatterns(overdueExpenses, highValueExpenses);
 }
 ```
 
+Note: These query functions can be made more flexible by accepting optional projection parameters, allowing callers to specify which fields they need. For example, `findOverdueExpenses(daysOverdue, { id: true, totalClaim: true })` could return only the essential fields for performance-sensitive operations.
+
 #### Query Specifications
 
-For more complex scenarios, consider the specification pattern:
+For more complex scenarios, consider the specification pattern. This pattern is particularly useful when you need both `find` and `count` operations with identical filter logic, avoiding the duplication you might see with named query functions:
 
 ```typescript
 // expense-specifications.ts
