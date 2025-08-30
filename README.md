@@ -1191,40 +1191,9 @@ The key principle is to contain complexity and include only logic that is truly 
 
 **Abstraction considerations:** Injecting functions like `findExpensesBySpec` into business logic doesn't provide much more abstraction than injecting the raw `find` function directly. Business logic can still construct arbitrary specifications on-the-fly, meaning it remains tightly coupled to query implementation details - just through the specification interface rather than raw filters. This creates an illusion of abstraction without the actual benefits.
 
-To achieve true decoupling, consider wrapping specific specification usage in named query functions: `findOverdueExpenses()`, `findHighValueExpenses()`, etc. Alternatively, provide a specification registry or factory that business logic can query by semantic names rather than constructing specifications directly. This approach maintains the composability benefits of specifications while preventing business logic from being exposed to their implementation details.
+To achieve true decoupling, consider wrapping specific specification usage in named query functions: `findOverdueExpenses()`, `findHighValueExpenses()`, etc. Alternatively, provide registries or factories with semantic names rather than exposing specification construction directly.
 
-```typescript
-// Registry approach - pre-defined specs
-const expenseSpecs = {
-  overdue: overdueExpenseSpec(30),
-  highValue: highValueExpenseSpec(1000),
-  travel: categoryExpenseSpec('travel'),
-} as const;
-
-// Factory approach - parameterized spec creation
-const expenseSpecFactory = {
-  overdue: (days: number) => overdueExpenseSpec(days),
-  highValue: (amount: number) => highValueExpenseSpec(amount),
-  category: (categoryId: string) => categoryExpenseSpec(categoryId),
-  combined: (name: string, ...specs: ExpenseSpecification[]) =>
-    combineSpecs(...specs),
-} as const;
-
-// Business logic uses semantic names instead of constructing specs
-const expensiveTravel = await findExpensesBySpec(
-  deps,
-  expenseSpecFactory.combined(
-    'expensive-travel',
-    expenseSpecFactory.overdue(30),
-    expenseSpecs.travel,
-    expenseSpecFactory.highValue(500)
-  )
-);
-```
-
-**Restricting specification access:** You can limit which specifications different business contexts can use through interface segregation and controlled exports - restricting access to sensitive specifications (like admin-only filters) while providing curated subsets for different business contexts (reporting vs user dashboards).
-
-**The bypass problem:** Even with registries and interface segregation, business logic can still construct ad-hoc specifications and pass them to `findExpensesBySpec`, completely undermining the abstraction:
+**Restricting specification access and the bypass problem:** However, these approaches have a fundamental flaw. Even with registries, factories, and interface segregation to limit access to sensitive specifications, business logic can still construct ad-hoc specifications and pass them to `findExpensesBySpec`, completely undermining any access control:
 
 ```typescript
 // Business logic can still bypass all restrictions:
