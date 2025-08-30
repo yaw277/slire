@@ -1204,7 +1204,7 @@ const rogueSpec: ExpenseSpecification = {
 const result = await findExpensesBySpec(deps, rogueSpec); // Works!
 ```
 
-**Solution 1 - Branded specifications:**
+The key insight is that we need to make it impossible (not just inconvenient) for business logic to create arbitrary specifications. TypeScript's branded types provide exactly this capability - we can mark approved specifications with a unique symbol that only controlled factory functions can add. This prevents business logic from constructing specification objects directly while maintaining full parameterization flexibility.
 
 ```typescript
 // Create a unique symbol for marking approved specs
@@ -1242,37 +1242,7 @@ const rogueApproved = createApprovedSpec(rogueSpec); // ❌ createApprovedSpec n
 const validSpec = approvedExpenseSpecs.overdue(30); // ✅ Only way to get approved spec
 ```
 
-**Solution 2 - Opaque specification handles:**
-
-```typescript
-// Specifications become opaque handles
-declare const SPEC_BRAND: unique symbol;
-type SpecificationHandle = { readonly [SPEC_BRAND]: true };
-
-class SpecificationRegistry {
-  private specs = new Map<SpecificationHandle, ExpenseSpecification>();
-
-  register(spec: ExpenseSpecification): SpecificationHandle {
-    const handle = { [SPEC_BRAND]: true } as SpecificationHandle;
-    this.specs.set(handle, spec);
-    return handle;
-  }
-
-  async findByHandle(
-    deps: { find: FindExpenses },
-    handle: SpecificationHandle
-  ) {
-    const spec = this.specs.get(handle);
-    if (!spec) throw new Error('Invalid specification handle');
-    return await deps.find(spec.toFilter());
-  }
-}
-
-// Business logic can only use pre-registered handles
-const registry = new SpecificationRegistry();
-const overdueHandle = registry.register(overdueExpenseSpec(30));
-const result = await registry.findByHandle(deps, overdueHandle);
-```
+**Consider the trade-offs:** While branded specifications provide bulletproof access control, this level of complexity might not always be justified. Clear code review practices and team conventions can often ensure proper abstraction boundaries without TypeScript ceremony. A simpler alternative is avoiding `findBySpec` exposure altogether - wrap specification usage in named query functions like `findOverdueExpenses()` instead. This adds another layer of indirection but achieves similar abstraction benefits with conventional patterns most teams already understand.
 
 - I wonder if it would be worthwhile to extend the smart-repo interface with a `findBySpec` and `countBySpec` function as a convenience over `findExpensesBySpec` and `countExpensesBySpec` shown in the example above
 
