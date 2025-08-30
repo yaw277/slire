@@ -1193,6 +1193,118 @@ The key principle is to contain complexity and include only logic that is truly 
 
 To achieve true decoupling, consider wrapping specific specification usage in named query functions: `findOverdueExpenses()`, `findHighValueExpenses()`, etc. Alternatively, provide a specification registry or factory that business logic can query by semantic names rather than constructing specifications directly. This approach maintains the composability benefits of specifications while preventing business logic from being exposed to their implementation details.
 
+```typescript
+// Registry approach - pre-defined specs
+const expenseSpecs = {
+  overdue: overdueExpenseSpec(30),
+  highValue: highValueExpenseSpec(1000),
+  travel: categoryExpenseSpec('travel'),
+} as const;
+
+// Factory approach - parameterized spec creation
+const expenseSpecFactory = {
+  overdue: (days: number) => overdueExpenseSpec(days),
+  highValue: (amount: number) => highValueExpenseSpec(amount),
+  category: (categoryId: string) => categoryExpenseSpec(categoryId),
+  combined: (name: string, ...specs: ExpenseSpecification[]) =>
+    combineSpecs(...specs),
+} as const;
+
+// Business logic uses semantic names instead of constructing specs
+const expensiveTravel = await findExpensesBySpec(
+  deps,
+  expenseSpecFactory.combined(
+    'expensive-travel',
+    expenseSpecFactory.overdue(30),
+    expenseSpecs.travel,
+    expenseSpecFactory.highValue(500)
+  )
+);
+```
+
+**Restricting specification access:** You can limit which specifications different business contexts can use through interface segregation and controlled exports - restricting access to sensitive specifications (like admin-only filters) while providing curated subsets for different business contexts (reporting vs user dashboards).
+
+**The bypass problem:** Even with registries and interface segregation, business logic can still construct ad-hoc specifications and pass them to `findExpensesBySpec`, completely undermining the abstraction:
+
+```typescript
+// Business logic can still bypass all restrictions:
+const rogueSpec: ExpenseSpecification = {
+  toFilter: () => ({ status: 'pending', secretField: true }),
+  describe: 'unauthorized query',
+};
+const result = await findExpensesBySpec(deps, rogueSpec); // Works!
+```
+
+**Solution 1 - Branded specifications:**
+
+```typescript
+// Create a unique symbol for marking approved specs
+const APPROVED_SPEC = Symbol('approved-specification');
+
+type ApprovedSpecification<T> = Specification<T> & {
+  readonly [APPROVED_SPEC]: true;
+};
+
+// Internal factory - NOT exported to business logic
+function createApprovedSpec<T>(
+  spec: Specification<T>
+): ApprovedSpecification<T> {
+  return { ...spec, [APPROVED_SPEC]: true as const };
+}
+
+// Only accept approved specs
+async function findExpensesByApprovedSpec(
+  deps: { find: FindExpenses },
+  spec: ApprovedSpecification<Expense>
+) {
+  return await deps.find(spec.toFilter());
+}
+
+// Controlled factory that business logic CAN access
+export const approvedExpenseSpecs = {
+  overdue: (days: number) => createApprovedSpec(overdueExpenseSpec(days)),
+  category: (categoryId: string) =>
+    createApprovedSpec(categoryExpenseSpec(categoryId)),
+} as const;
+
+// Business logic cannot create approved specs directly
+const rogueSpec = { toFilter: () => ({}), describe: 'hack' }; // ❌ Missing brand
+const rogueApproved = createApprovedSpec(rogueSpec); // ❌ createApprovedSpec not exported!
+const validSpec = approvedExpenseSpecs.overdue(30); // ✅ Only way to get approved spec
+```
+
+**Solution 2 - Opaque specification handles:**
+
+```typescript
+// Specifications become opaque handles
+declare const SPEC_BRAND: unique symbol;
+type SpecificationHandle = { readonly [SPEC_BRAND]: true };
+
+class SpecificationRegistry {
+  private specs = new Map<SpecificationHandle, ExpenseSpecification>();
+
+  register(spec: ExpenseSpecification): SpecificationHandle {
+    const handle = { [SPEC_BRAND]: true } as SpecificationHandle;
+    this.specs.set(handle, spec);
+    return handle;
+  }
+
+  async findByHandle(
+    deps: { find: FindExpenses },
+    handle: SpecificationHandle
+  ) {
+    const spec = this.specs.get(handle);
+    if (!spec) throw new Error('Invalid specification handle');
+    return await deps.find(spec.toFilter());
+  }
+}
+
+// Business logic can only use pre-registered handles
+const registry = new SpecificationRegistry();
+const overdueHandle = registry.register(overdueExpenseSpec(30));
+const result = await registry.findByHandle(deps, overdueHandle);
+```
+
 - I wonder if it would be worthwhile to extend the smart-repo interface with a `findBySpec` and `countBySpec` function as a convenience over `findExpensesBySpec` and `countExpensesBySpec` shown in the example above
 
 #### Repository Extension
