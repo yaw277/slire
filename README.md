@@ -1189,7 +1189,9 @@ Specifications can also maintain internal state that evolves with each `toFilter
 
 The key principle is to contain complexity and include only logic that is truly immanent to the query specification itself. External concerns like user authentication, system configuration, or performance monitoring often belong in separate layers rather than being embedded within specification factories. Keep specifications focused on expressing business query logic rather than orchestrating complex system interactions.
 
-- point out that injecting smth like `findExpensesBySpec` into business logic functions is basically the same as injection the pure, more-direct `find` function as the business logic can query whatever it wants by building specs ad-hoc. so consider wrapping findBySpec(specX) into named queries as well or provide a spec registry/factory to choose from
+**Abstraction considerations:** Injecting functions like `findExpensesBySpec` into business logic doesn't provide much more abstraction than injecting the raw `find` function directly. Business logic can still construct arbitrary specifications on-the-fly, meaning it remains tightly coupled to query implementation details - just through the specification interface rather than raw filters. This creates an illusion of abstraction without the actual benefits.
+
+To achieve true decoupling, consider wrapping specific specification usage in named query functions: `findOverdueExpenses()`, `findHighValueExpenses()`, etc. Alternatively, provide a specification registry or factory that business logic can query by semantic names rather than constructing specifications directly. This approach maintains the composability benefits of specifications while preventing business logic from being exposed to their implementation details.
 
 - I wonder if it would be worthwhile to extend the smart-repo interface with a `findBySpec` and `countBySpec` function as a convenience over `findExpensesBySpec` and `countExpensesBySpec` shown in the example above
 
