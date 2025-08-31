@@ -1244,8 +1244,6 @@ const validSpec = approvedExpenseSpecs.overdue(30); // ✅ Only way to get appro
 
 **Consider the trade-offs:** While branded specifications provide bulletproof access control, this level of complexity might not always be justified. Clear code review practices and team conventions can often ensure proper abstraction boundaries without TypeScript ceremony. A simpler alternative is avoiding `findBySpec` exposure altogether - wrap specification usage in named query functions like `findOverdueExpenses()` instead. This adds another layer of indirection but achieves similar abstraction benefits with conventional patterns most teams already understand.
 
-- I wonder if it would be worthwhile to extend the smart-repo interface with a `findBySpec` and `countBySpec` function as a convenience over `findExpensesBySpec` and `countExpensesBySpec` shown in the example above
-
 #### Repository Extension
 
 Another approach is extending your repository with domain-specific methods:

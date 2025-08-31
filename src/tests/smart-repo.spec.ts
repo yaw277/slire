@@ -1,6 +1,11 @@
 import { omit, range, sortBy } from 'lodash-es';
 import { Collection } from 'mongodb';
-import { createSmartMongoRepo } from '../lib/smart-repo';
+import {
+  createSmartMongoRepo,
+  Specification,
+  combineSpecs,
+  SmartRepo,
+} from '../lib/smart-repo';
 import { mongo, setupMongo, teardownMongo } from './mongo-fixture';
 
 describe('createSmartMongoRepo', function () {
@@ -1194,6 +1199,200 @@ describe('createSmartMongoRepo', function () {
         { name: true, email: true }
       );
       expect(results).toHaveLength(0);
+    });
+  });
+
+  describe('specification pattern', () => {
+    it('should support findBySpec and countBySpec with basic specifications', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      // Create test data
+      const entities = [
+        createTestEntity({ name: 'Alice', age: 25, isActive: true }),
+        createTestEntity({ name: 'Bob', age: 30, isActive: true }),
+        createTestEntity({ name: 'Charlie', age: 35, isActive: false }),
+      ];
+
+      for (const entity of entities) {
+        await repo.create(entity);
+      }
+
+      // Create specifications
+      const activeUsersSpec: Specification<TestEntity> = {
+        toFilter: () => ({ isActive: true }),
+        describe: 'active users',
+      };
+
+      const specificAgeSpec: Specification<TestEntity> = {
+        toFilter: () => ({ age: 25 }),
+        describe: 'users aged 25',
+      };
+
+      // Test findBySpec
+      const activeUsers = await repo.findBySpec(activeUsersSpec);
+      expect(activeUsers).toHaveLength(2);
+      activeUsers.forEach((user) => expect(user.isActive).toBe(true));
+
+      const youngUsers = await repo.findBySpec(specificAgeSpec);
+      expect(youngUsers).toHaveLength(1);
+      expect(youngUsers[0].name).toBe('Alice');
+
+      // Test countBySpec
+      const activeCount = await repo.countBySpec(activeUsersSpec);
+      expect(activeCount).toBe(2);
+
+      const youngCount = await repo.countBySpec(specificAgeSpec);
+      expect(youngCount).toBe(1);
+    });
+
+    it('should support findBySpec with projections', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      const entity = createTestEntity({
+        name: 'Test User',
+        age: 30,
+        isActive: true,
+      });
+      await repo.create(entity);
+
+      const spec: Specification<TestEntity> = {
+        toFilter: () => ({ isActive: true }),
+        describe: 'active users',
+      };
+
+      const results = await repo.findBySpec(spec, { id: true, name: true });
+      expect(results).toHaveLength(1);
+      expect(results[0]).toHaveProperty('id');
+      expect(results[0]).toHaveProperty('name');
+      expect(results[0]).not.toHaveProperty('age');
+      expect(results[0]).not.toHaveProperty('isActive');
+    });
+
+    it('should support specification composition with combineSpecs', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      // Create test data
+      const entities = [
+        createTestEntity({ name: 'Alice', age: 25, isActive: true }),
+        createTestEntity({ name: 'Bob', age: 30, isActive: true }),
+        createTestEntity({ name: 'Charlie', age: 25, isActive: false }),
+      ];
+
+      for (const entity of entities) {
+        await repo.create(entity);
+      }
+
+      // Create individual specifications
+      const activeSpec: Specification<TestEntity> = {
+        toFilter: () => ({ isActive: true }),
+        describe: 'active users',
+      };
+
+      const youngSpec: Specification<TestEntity> = {
+        toFilter: () => ({ age: 25 }),
+        describe: 'users aged 25',
+      };
+
+      // Combine specifications
+      const combinedSpec = combineSpecs(activeSpec, youngSpec);
+
+      // Test combined specification
+      const results = await repo.findBySpec(combinedSpec);
+      expect(results).toHaveLength(1);
+      expect(results[0].name).toBe('Alice');
+      expect(results[0].isActive).toBe(true);
+      expect(results[0].age).toBe(25);
+
+      // Test description combines properly
+      expect(combinedSpec.describe).toBe('active users AND users aged 25');
+
+      const count = await repo.countBySpec(combinedSpec);
+      expect(count).toBe(1);
+    });
+
+    it('should demonstrate approved specification pattern for security', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      // Create test data
+      const entities = [
+        createTestEntity({ name: 'Alice', age: 25, isActive: true }),
+        createTestEntity({ name: 'Bob', age: 30, isActive: true }),
+        createTestEntity({ name: 'Charlie', age: 35, isActive: false }),
+      ];
+
+      for (const entity of entities) {
+        await repo.create(entity);
+      }
+
+      // Branded specification approach
+      const APPROVED_SPEC = Symbol('approved-specification');
+
+      type ApprovedSpecification<T> = Specification<T> & {
+        readonly [APPROVED_SPEC]: true;
+      };
+
+      // Internal factory - would not be exported in real code
+      function createApprovedSpec<T>(
+        spec: Specification<T>
+      ): ApprovedSpecification<T> {
+        return { ...spec, [APPROVED_SPEC]: true as const };
+      }
+
+      // Controlled factory that business logic can access
+      const approvedTestSpecs = {
+        active: () =>
+          createApprovedSpec<TestEntity>({
+            toFilter: () => ({ isActive: true }),
+            describe: 'active users',
+          }),
+        byAge: (age: number) =>
+          createApprovedSpec<TestEntity>({
+            toFilter: () => ({ age }),
+            describe: `users aged ${age}`,
+          }),
+      } as const;
+
+      // Function that only accepts approved specs
+      async function findByApprovedSpec<T extends { id: string }>(
+        repo: SmartRepo<T, {}, any>,
+        spec: ApprovedSpecification<T>
+      ): Promise<T[]> {
+        return repo.findBySpec(spec);
+      }
+
+      // Test approved specifications work
+      const activeUsers = await findByApprovedSpec(
+        repo,
+        approvedTestSpecs.active()
+      );
+      expect(activeUsers).toHaveLength(2);
+
+      const youngUsers = await findByApprovedSpec(
+        repo,
+        approvedTestSpecs.byAge(25)
+      );
+      expect(youngUsers).toHaveLength(1);
+      expect(youngUsers[0].name).toBe('Alice');
+
+      // Demonstrate that rogue specs cannot be created
+      // This would fail at compile time:
+      // const rogueSpec = { toFilter: () => ({}), describe: 'hack' };
+      // const result = await findByApprovedSpec(repo, rogueSpec); // ❌ Type error!
+
+      // This would also fail at compile time:
+      // const rogueApproved = createApprovedSpec(rogueSpec); // ❌ createApprovedSpec not exported!
     });
   });
 

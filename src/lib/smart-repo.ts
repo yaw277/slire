@@ -150,9 +150,34 @@ export type SmartRepo<
     filter: Partial<T>,
     projection: P
   ): Promise<Projected<T, P>[]>;
+  findBySpec<S extends Specification<T>>(spec: S): Promise<T[]>;
+  findBySpec<S extends Specification<T>, P extends Projection<T>>(
+    spec: S,
+    projection: P
+  ): Promise<Projected<T, P>[]>;
 
   count(filter: Partial<T>): Promise<number>;
+  countBySpec<S extends Specification<T>>(spec: S): Promise<number>;
 };
+
+// Specification pattern types
+export type Specification<T> = {
+  toFilter(): Partial<T>;
+  describe: string;
+};
+
+export function combineSpecs<T>(
+  ...specs: Specification<T>[]
+): Specification<T> {
+  return {
+    toFilter: () =>
+      specs.reduce(
+        (filter, spec) => ({ ...filter, ...spec.toFilter() }),
+        {} as Partial<T>
+      ),
+    describe: specs.map((spec) => spec.describe).join(' AND '),
+  };
+}
 
 /**
  * Creates a smart MongoDB repository with type-safe CRUD operations.
@@ -691,6 +716,13 @@ export function createSmartMongoRepo<
       return docs.map((doc) => fromMongoDoc(doc, projection));
     },
 
+    findBySpec: async <P extends Projection<T>>(
+      spec: Specification<T>,
+      projection?: P
+    ): Promise<Projected<T, P>[]> => {
+      return repo.find(spec.toFilter(), projection as P);
+    },
+
     count: async (filter: Partial<T>): Promise<number> => {
       // convert id to _id for MongoDB queries
       const { id, ...restFilter } = filter;
@@ -699,6 +731,10 @@ export function createSmartMongoRepo<
         applyScopeForRead(mongoFilter),
         withSessionOptions()
       );
+    },
+
+    countBySpec: async (spec: Specification<T>): Promise<number> => {
+      return repo.count(spec.toFilter());
     },
 
     // To be used when simple CRUD methods are not enough and direct data access
