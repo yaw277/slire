@@ -37,7 +37,7 @@
   - [Business Logic with Transactions](#business-logic-with-transactions)
   - [Client-Side Stored Procedures](#client-side-stored-procedures)
   - [Query Abstraction Patterns](#query-abstraction-patterns)
-  - [Putting It All Together: Data Access Architecture Patterns](#putting-it-all-together-data-access-architecture-patterns)
+  - [Putting It All Together](#putting-it-all-together)
 
 ---
 
@@ -1320,13 +1320,80 @@ Don't feel constrained to choose one pattern universally. Consider mixing approa
 
 If you start with direct query injection and later need more abstraction, identify patterns in your codebase and extract incrementally, starting with the most complex or frequently used queries. Maintain backwards compatibility and migrate gradually. The key insight is that abstraction should earn its keep - wrap queries when they provide real value through reusability, testability, or reduced complexity, not just because you can. Premature abstraction can be just as problematic as inadequate abstraction, so start simple, identify patterns, and abstract when the value is clear.
 
-## Putting It All Together: Data Access Architecture Patterns
+## Putting It All Together
 
-The patterns discussed so far - repository factories, specialized data access functions, client-side stored procedures, and query abstractions - work best when integrated into a cohesive data access architecture. This section explores two practical approaches for organizing these patterns at scale.
+The patterns discussed so far - repository factories, specialized data access functions, client-side stored procedures, and query abstractions - work best when integrated into a cohesive data access architecture. Most business applications follow predictable patterns that create natural integration points for data access:
 
-### The Unified Data Access Factory
+**HTTP Request Handlers** follow a consistent structure:
 
-In complex applications, especially those handling multiple domains and contexts (HTTP requests, background jobs, scripts), a single comprehensive data access factory can provide consistency and convenience. Here's how all the patterns can come together:
+```typescript
+async function handleExpenseUpdate(req: Request, res: Response) {
+  // 1. Validate payload and extract auth context
+  const { organizationId, userId } = validateAuth(req);
+  const expenseData = validatePayload(req.body);
+  const logger = createLogger(req);
+
+  // 2. Authorization check (typically done at handler level)
+  if (!canUserEditExpense(userId, expenseData.expenseId)) {
+    return res.status(403).json({ error: 'Not authorized' });
+  }
+
+  // 3. Instantiate data access
+  const dataAccess = createDataAccess({ organizationId, logger });
+
+  // 4. Call business logic, injecting focused data access methods
+  const result = await updateExpenseWorkflow(expenseData, {
+    getExpenseById: dataAccess.expenses.getExpenseById,
+    updateExpense: dataAccess.expenses.repo.update,
+    recalculateTrip: dataAccess.trips.recalculateTotals,
+  });
+
+  // 5. Respond with result
+  res.json(result);
+}
+```
+
+**Background Jobs and Scripts** share similar needs:
+
+```typescript
+async function runMigrationJob(organizationId: string) {
+  const logger = createJobLogger();
+  const dataAccess = createDataAccess({ organizationId, logger });
+
+  // Client-side stored procedure handles complex workflow
+  await dataAccess.bulk.migrateExpenseCategories({
+    batchSize: 1000,
+    dryRun: false,
+  });
+}
+```
+
+**Transaction-Heavy Operations** require coordinated data access:
+
+```typescript
+async function processComplexUpdate(updateData: any) {
+  const dataAccess = createDataAccess(baseContext);
+
+  await dataAccess.expenses.repo.runTransaction(async (session) => {
+    const txDataAccess = createDataAccess({ ...baseContext, session });
+
+    // Multiple operations coordinated within transaction
+    await coordinatedBusinessLogic(updateData, txDataAccess);
+  });
+}
+```
+
+This consistent pattern - _instantiate data access, inject specific methods into business logic_ - creates a natural place to organize all the patterns we've discussed. Note that authorization typically happens at the handler level since it depends on the specific operation being performed. Alternatively, you can pass authenticated user context to the data access factory if your architecture prefers to handle authorization within data access layers, though this is less common as it couples data access to authorization logic.
+
+The question becomes: how do we structure that data access instantiation to scale across multiple domains, teams, and usage contexts?
+
+### Architectural Approaches
+
+Two main approaches emerge for organizing data access at scale:
+
+#### The Unified Data Access Factory
+
+For applications where consistency and convenience are priorities, a single comprehensive factory provides all data access capabilities through one interface:
 
 ```typescript
 // data-access.ts - unified interface
