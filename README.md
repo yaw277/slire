@@ -1281,7 +1281,7 @@ function createExtendedExpenseRepo(baseRepo: ExpenseRepo) {
 }
 ```
 
-#### Decision Criteria
+#### Choosing Your Approach
 
 Choose direct query injection when:
 
@@ -1300,44 +1300,6 @@ Choose query wrapping when:
 - Large teams - multiple developers need to use the same query patterns
 - Testing isolation - you want to test business logic independently of query structure
 
-#### Hybrid Approaches
+Don't feel constrained to choose one pattern universally. Consider mixing approaches based on the complexity and usage patterns of different queries - use direct injection for simple lookups and choose the more advanced patterns for complex, reusable operations within the same application.
 
-Don't feel constrained to choose one pattern universally. Consider mixing approaches based on the complexity and usage patterns of different queries:
-
-```typescript
-// Simple, direct injection for basic lookups
-async function getExpenseDetails(
-  deps: { getById: ExpenseRepo['getById'] },
-  expenseId: string
-) {
-  return await deps.getById(expenseId);
-}
-
-// Wrapped queries for complex, reusable operations
-async function generateExpenseReport(
-  deps: {
-    findOverdueExpenses: ExpenseQueries['findOverdueExpenses'];
-    findHighValueExpenses: ExpenseQueries['findHighValueExpenses'];
-  },
-  params: ReportParams
-) {
-  // Business logic uses semantic query functions
-  const overdueExpenses = await deps.findOverdueExpenses(params.overdueDays);
-  const highValueExpenses = await deps.findHighValueExpenses(params.threshold);
-
-  return buildReport({ overdueExpenses, highValueExpenses });
-}
-```
-
-#### Migration Strategy
-
-If you start with direct query injection and later decide you need more abstraction:
-
-1. **Identify patterns**: Look for repeated or complex queries across your codebase
-2. **Extract incrementally**: Start by wrapping the most complex or frequently used queries
-3. **Maintain backwards compatibility**: Keep direct injection available for simple cases
-4. **Update gradually**: Migrate business logic to use wrapped queries over time
-
-The key insight is that **abstraction should earn its keep**. Don't wrap queries just because you can - wrap them when the abstraction provides real value through reusability, testability, or reduced complexity. Simple queries that appear once might be better left as direct injections, while complex business-critical queries often benefit from careful abstraction.
-
-Remember: **premature abstraction can be just as problematic as inadequate abstraction**. Start simple, identify patterns, and abstract when the value is clear.
+If you start with direct query injection and later need more abstraction, identify patterns in your codebase and extract incrementally, starting with the most complex or frequently used queries. Maintain backwards compatibility and migrate gradually. The key insight is that abstraction should earn its keep - wrap queries when they provide real value through reusability, testability, or reduced complexity, not just because you can. Premature abstraction can be just as problematic as inadequate abstraction, so start simple, identify patterns, and abstract when the value is clear.
