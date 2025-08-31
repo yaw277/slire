@@ -1446,7 +1446,7 @@ async function runExpenseCleanupJob(organizationId: string) {
 
 While this example uses clean, testable interfaces, it requires two database roundtrips - one to find matching records, another to delete them by ID. For performance-critical batch operations, this overhead can be improved by bypassing the DB-agnostic interface and using database-specific optimizations.
 
-Bypassing data access factory and instantiate repository to get access to native features:
+Skip data access factory and instantiate repository to get access to native features:
 
 ```typescript
 async function runExpenseCleanupJobOptimized(organizationId: string) {
