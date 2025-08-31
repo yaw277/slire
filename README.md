@@ -1339,10 +1339,13 @@ async function handleSimpleExpenseUpdate(req: Request, res: Response) {
 
   // 2. Instantiate data access and call business logic
   const dataAccess = createDataAccess({ organizationId, logger });
-  const result = await updateExpenseWorkflow(expenseData, {
-    updateExpense: dataAccess.expenses.repo.update,
-    recalculateTrip: dataAccess.trips.recalculateTotals,
-  });
+  const result = await updateExpenseWorkflow(
+    {
+      updateExpense: dataAccess.expenses.repo.update,
+      recalculateTrip: dataAccess.trips.recalculateTotals,
+    },
+    { expenseData }
+  );
 
   res.json(result);
 }
@@ -1358,16 +1361,22 @@ async function handleExpenseUpdateWithAuth(req: Request, res: Response) {
   const dataAccess = createDataAccess({ organizationId, logger });
 
   // Problem: Authorization needs expense data
-  await checkCanWriteExpense(userId, expenseData.expenseId, {
-    getExpenseById: dataAccess.expenses.getExpenseById, // Fetch #1
-  });
+  await checkCanWriteExpense(
+    {
+      getExpenseById: dataAccess.expenses.getExpenseById, // Fetch #1
+    },
+    { userId, expenseId: expenseData.expenseId }
+  );
 
   // Problem: Business logic may also need the same expense data
-  const result = await updateExpenseWorkflow(expenseData, {
-    getExpenseById: dataAccess.expenses.getExpenseById, // Potential fetch #2
-    updateExpense: dataAccess.expenses.repo.update,
-    recalculateTrip: dataAccess.trips.recalculateTotals,
-  });
+  const result = await updateExpenseWorkflow(
+    {
+      getExpenseById: dataAccess.expenses.getExpenseById, // Potential fetch #2
+      updateExpense: dataAccess.expenses.repo.update,
+      recalculateTrip: dataAccess.trips.recalculateTotals,
+    },
+    { expenseData }
+  );
 
   res.json(result);
 }
@@ -1390,14 +1399,16 @@ async function handleExpenseUpdate(req: Request, res: Response) {
     throwNotFound();
 
   // Clean authorization: Pass actual data, not data access
-  await checkCanWriteExpense(userId, expense);
+  await checkCanWriteExpense({ userId, expense });
 
   // Business logic: Mix prefetched data with data access methods
-  const result = await updateExpenseWorkflow(expenseData, expense, {
-    updateExpense: dataAccess.expenses.repo.update,
-    recalculateTrip: dataAccess.trips.recalculateTotals,
-    getUserPreferences: dataAccess.users.getPreferences, // Only when needed
-  });
+  const result = await updateExpenseWorkflow(
+    {
+      updateExpense: dataAccess.expenses.repo.update,
+      recalculateTrip: dataAccess.trips.recalculateTotals,
+    },
+    { expenseData, expense }
+  );
 
   res.json(result);
 }
