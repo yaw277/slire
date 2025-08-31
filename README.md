@@ -37,6 +37,7 @@
   - [Business Logic with Transactions](#business-logic-with-transactions)
   - [Client-Side Stored Procedures](#client-side-stored-procedures)
   - [Query Abstraction Patterns](#query-abstraction-patterns)
+  - [Putting It All Together: Data Access Architecture Patterns](#putting-it-all-together-data-access-architecture-patterns)
 
 ---
 
@@ -1318,3 +1319,349 @@ Choose query wrapping when:
 Don't feel constrained to choose one pattern universally. Consider mixing approaches based on the complexity and usage patterns of different queries - use direct injection for simple lookups and choose the more advanced patterns for complex, reusable operations within the same application.
 
 If you start with direct query injection and later need more abstraction, identify patterns in your codebase and extract incrementally, starting with the most complex or frequently used queries. Maintain backwards compatibility and migrate gradually. The key insight is that abstraction should earn its keep - wrap queries when they provide real value through reusability, testability, or reduced complexity, not just because you can. Premature abstraction can be just as problematic as inadequate abstraction, so start simple, identify patterns, and abstract when the value is clear.
+
+## Putting It All Together: Data Access Architecture Patterns
+
+The patterns discussed so far - repository factories, specialized data access functions, client-side stored procedures, and query abstractions - work best when integrated into a cohesive data access architecture. This section explores two practical approaches for organizing these patterns at scale.
+
+### The Unified Data Access Factory
+
+In complex applications, especially those handling multiple domains and contexts (HTTP requests, background jobs, scripts), a single comprehensive data access factory can provide consistency and convenience. Here's how all the patterns can come together:
+
+```typescript
+// data-access.ts - unified interface
+export type GetDataAccess = (context: DataAccessContext) => DataAccess;
+
+export type DataAccessContext = {
+  organizationId: string;
+  userId?: string;
+  logger: Logger;
+  session?: ClientSession;
+};
+
+export type DataAccess = {
+  expenses: {
+    // Repository access
+    repo: ExpenseRepo;
+
+    // Named query functions (specialized data access)
+    getExpensesById: (
+      ids: string[]
+    ) => Promise<{ expenses: Expense[]; notFoundIds: string[] }>;
+    getByTripId: (tripId: string) => Promise<Expense[]>;
+    queryExpenses: QueryExpenses;
+
+    // Client-side stored procedures
+    processReceiptDigitization: ProcessReceiptDigitization;
+    markTopExpensesByCategory: MarkTopExpensesByCategory;
+    finalizeExpenseReimbursement: FinalizeExpenseReimbursement;
+
+    // Sub-domain organization
+    tags: {
+      repo: TagRepo;
+      getActiveTagsByDimension: GetActiveTagsByDimension;
+      createLocationTagsFromExpenses: CreateLocationTagsFromExpenses;
+    };
+
+    perDiem: {
+      repo: PerDiemRepo;
+      computeHistoricRates: ComputeHistoricRates;
+      updateTaxabilityFromRateChanges: UpdateTaxabilityFromRateChanges;
+    };
+  };
+
+  trips: {
+    repo: TripRepo;
+    getTripWithExpenseSummary: GetTripWithExpenseSummary;
+    linkExpensesToTrip: LinkExpensesToTrip;
+    generateAutomaticExpenses: GenerateAutomaticExpenses;
+  };
+
+  users: {
+    repo: UserRepo;
+    getUserRecentPreferences: GetUserRecentPreferences;
+    updateUserExpenseSettings: UpdateUserExpenseSettings;
+  };
+
+  // Cross-cutting operations using multiple repositories
+  bulk: {
+    deleteAllOrganizationData: DeleteAllOrganizationData;
+    migrateExpenseCategories: MigrateExpenseCategories;
+  };
+};
+```
+
+The factory implementation organizes all repositories and functions:
+
+```typescript
+// data-access-factory.ts
+export function createDataAccess(context: DataAccessContext): DataAccess {
+  const { organizationId, userId, logger, session } = context;
+
+  // Create base repositories with shared configuration
+  const mongoClient = getMongoClient();
+  const scope = { organizationId };
+  const options = {
+    traceTimestamps: true,
+    softDelete: true,
+    version: true,
+    session,
+  };
+
+  // Repository factories
+  const expenseRepo = createExpenseRepo(mongoClient, scope, options);
+  const tripRepo = createTripRepo(mongoClient, scope, options);
+  const userRepo = createUserRepo(mongoClient, scope, options);
+  const tagRepo = createTagRepo(mongoClient, scope, options);
+  const perDiemRepo = createPerDiemRepo(mongoClient, scope, options);
+
+  return {
+    expenses: {
+      repo: expenseRepo,
+
+      // Named queries using specifications and projections
+      getExpensesById: createGetExpensesById(expenseRepo),
+      getByTripId: createGetByTripId(expenseRepo),
+      queryExpenses: createQueryExpenses(expenseRepo, userRepo),
+
+      // Client-side stored procedures
+      processReceiptDigitization: createProcessReceiptDigitization({
+        expenseRepo,
+        tagRepo,
+        logger,
+      }),
+      markTopExpensesByCategory: createMarkTopExpensesByCategory({
+        expenseRepo,
+        logger,
+      }),
+      finalizeExpenseReimbursement: createFinalizeExpenseReimbursement({
+        expenseRepo,
+        userRepo,
+        logger,
+      }),
+
+      tags: {
+        repo: tagRepo,
+        getActiveTagsByDimension: createGetActiveTagsByDimension(tagRepo),
+        createLocationTagsFromExpenses: createLocationTagsFromExpenses({
+          tagRepo,
+          expenseRepo,
+          logger,
+        }),
+      },
+
+      perDiem: {
+        repo: perDiemRepo,
+        computeHistoricRates: createComputeHistoricRates(
+          perDiemRepo,
+          expenseRepo
+        ),
+        updateTaxabilityFromRateChanges: createUpdateTaxabilityFromRateChanges({
+          perDiemRepo,
+          expenseRepo,
+          logger,
+        }),
+      },
+    },
+
+    trips: {
+      repo: tripRepo,
+      getTripWithExpenseSummary: createGetTripWithExpenseSummary(
+        tripRepo,
+        expenseRepo
+      ),
+      linkExpensesToTrip: createLinkExpensesToTrip(tripRepo, expenseRepo),
+      generateAutomaticExpenses: createGenerateAutomaticExpenses({
+        tripRepo,
+        expenseRepo,
+        perDiemRepo,
+        logger,
+      }),
+    },
+
+    users: {
+      repo: userRepo,
+      getUserRecentPreferences: createGetUserRecentPreferences(
+        userRepo,
+        expenseRepo
+      ),
+      updateUserExpenseSettings: createUpdateUserExpenseSettings(
+        userRepo,
+        logger
+      ),
+    },
+
+    bulk: {
+      deleteAllOrganizationData: createDeleteAllOrganizationData({
+        expenseRepo,
+        tripRepo,
+        tagRepo,
+        logger,
+      }),
+      migrateExpenseCategories: createMigrateExpenseCategories({
+        expenseRepo,
+        tagRepo,
+        logger,
+      }),
+    },
+  };
+}
+
+// Convenience factory-factory for common usage patterns
+export function createDataAccessForRequest(
+  organizationId: string,
+  logger: Logger
+): GetDataAccess {
+  return (context) =>
+    createDataAccess({
+      ...context,
+      organizationId,
+      logger,
+    });
+}
+```
+
+### Modular Theme-Oriented Factories
+
+For larger applications or teams, breaking the monolithic factory into focused, domain-specific modules can improve maintainability and team ownership:
+
+```typescript
+// expense-data-access.ts
+export type ExpenseDataAccess = {
+  repo: ExpenseRepo;
+  getExpensesById: GetExpensesById;
+  queryExpenses: QueryExpenses;
+  processReceiptDigitization: ProcessReceiptDigitization;
+  finalizeReimbursement: FinalizeReimbursement;
+  tags: TagDataAccess;
+  perDiem: PerDiemDataAccess;
+};
+
+export function createExpenseDataAccess(
+  context: DataAccessContext
+): ExpenseDataAccess {
+  // Implementation similar to the unified factory but focused on expenses
+}
+
+// trip-data-access.ts
+export type TripDataAccess = {
+  repo: TripRepo;
+  getTripWithSummary: GetTripWithSummary;
+  linkExpensesToTrip: LinkExpensesToTrip;
+  generateAutomaticExpenses: GenerateAutomaticExpenses;
+};
+
+export function createTripDataAccess(
+  context: DataAccessContext
+): TripDataAccess {
+  // Implementation focused on trips
+}
+
+// Composite factory for applications that need everything
+export type ComprehensiveDataAccess = {
+  expenses: ExpenseDataAccess;
+  trips: TripDataAccess;
+  users: UserDataAccess;
+  cross: CrossDomainDataAccess;
+};
+
+export function createComprehensiveDataAccess(
+  context: DataAccessContext
+): ComprehensiveDataAccess {
+  return {
+    expenses: createExpenseDataAccess(context),
+    trips: createTripDataAccess(context),
+    users: createUserDataAccess(context),
+    cross: createCrossDomainDataAccess(context),
+  };
+}
+```
+
+### Practical Usage Patterns
+
+Both approaches support common application patterns:
+
+```typescript
+// HTTP request handler
+async function handleExpenseCreation(req: Request, res: Response) {
+  const { organizationId, userId } = validateAuth(req);
+  const expenseData = validatePayload(req.body);
+  const logger = createLogger(req);
+
+  // Unified approach
+  const dataAccess = createDataAccess({ organizationId, userId, logger });
+
+  // Business logic gets clean, focused interface
+  const result = await processExpenseCreation(expenseData, {
+    createExpense: dataAccess.expenses.repo.create,
+    linkToTrip: dataAccess.trips.linkExpensesToTrip,
+    updateUserPreferences: dataAccess.users.updateUserExpenseSettings,
+  });
+
+  res.json(result);
+}
+
+// Background job / script
+async function runExpenseReprocessingJob(organizationId: string) {
+  const logger = createJobLogger();
+  const dataAccess = createDataAccess({ organizationId, logger });
+
+  // Client-side stored procedure handles the complex workflow
+  await dataAccess.expenses.processReceiptDigitization({
+    batchSize: 100,
+    retryFailures: true,
+  });
+}
+
+// Transaction-aware operations
+async function handleComplexExpenseUpdate(expenseId: string, updateData: any) {
+  const logger = createLogger();
+  const baseDataAccess = createDataAccess({ organizationId, logger });
+
+  await baseDataAccess.expenses.repo.runTransaction(async (session) => {
+    // Create transaction-aware data access
+    const txDataAccess = createDataAccess({ organizationId, logger, session });
+
+    // All operations participate in the transaction
+    await updateExpenseWithValidation(expenseId, updateData, {
+      updateExpense: txDataAccess.expenses.repo.update,
+      recalculateTrip: txDataAccess.trips.recalculateTripTotals,
+      updateUserStats: txDataAccess.users.updateExpenseStatistics,
+    });
+  });
+}
+```
+
+### Choosing Your Data Access Architecture
+
+**Choose the unified factory when**:
+
+- Working in a request-response pattern (HTTP handlers, serverless functions)
+- Need consistent configuration across all data access operations
+- Want a single point of dependency injection and testing
+- Team size is manageable and domains are closely related
+- Cross-domain operations are common
+
+**Choose modular factories when**:
+
+- Large teams with clear domain ownership
+- Independent deployment or development of different domains
+- Different configuration needs per domain (different databases, external services)
+- Want to limit dependency scope and reduce coupling
+- Building towards a microservices architecture
+
+**Handling the "God Class" Problem**:
+
+Even with a unified factory, avoid the god class antipattern by:
+
+- **Extract implementation modules**: Keep the interface unified but implement each domain in separate files
+- **Use composition**: Build the factory by composing smaller, focused factory functions
+- **Lazy initialization**: Only create repositories and functions when first accessed
+- **Clear boundaries**: Use TypeScript interfaces to enforce separation between domains
+- **Separate concerns**: Keep external service access (APIs, file systems) in separate modules from database access
+
+**External Services Consideration**:
+
+The question of whether external services (like mapping APIs, email services) belong in data access factories depends on your architecture goals. Consider separating them into distinct "service access" factories if they have different lifecycle, configuration, or error handling requirements than database operations.
+
+Both architectures benefit from the same core principles: dependency injection, explicit contracts, composable functions, and clear separation of concerns. Choose the approach that matches your team structure, application complexity, and long-term architectural goals, and don't hesitate to evolve from one approach to another as your needs change.
