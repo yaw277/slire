@@ -38,8 +38,6 @@
   - [Client-Side Stored Procedures](#client-side-stored-procedures)
   - [Query Abstraction Patterns](#query-abstraction-patterns)
   - [Putting It All Together](#putting-it-all-together)
-    - [HTTP Request Handlers](#http-request-handlers)
-    - [Background Jobs and Scripts](#background-jobs-and-scripts)
 
 ---
 
