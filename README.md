@@ -1425,39 +1425,63 @@ Alternative approaches like **internal caching** in the data access factory can 
 
 Background jobs, scripts, and other operational tasks typically run without user-based authorization concerns since they operate with system privileges rather than on behalf of individual users. However, they often need more complex data coordination and raise important questions about **what belongs in a data access factory** versus what should be instantiated on-demand.
 
-**Architectural boundaries**: The data access factory should provide **reusable building blocks** (repositories, common queries, cross-cutting procedures) rather than every possible operation. One-off migrations, specialized batch jobs, and narrow-purpose procedures often don't belong in the general factory - they can consume the factory's building blocks without being part of it.
+**Architectural boundaries**: The data access factory should provide **reusable building blocks** (repositories, common queries, cross-cutting procedures) rather than every possible operation. One-off migrations, specialized batch jobs, and narrow-purpose procedures often don't belong in it - they can consume the factory's building blocks without being part of it.
 
-**Building blocks from factory:**
+Like HTTP handlers, background jobs and scripts follow the same pattern of instantiating the data access factory to get their needed building blocks. The main difference is that they typically have less complex business logic and interact more directly with the provided repositories and queries, often performing straightforward data processing tasks without the layered dependency injection patterns seen in handlers.
+
+Direct use of building blocks from factory (DB-agnostic):
 
 ```typescript
-async function runExpenseReprocessingJob(organizationId: string) {
+async function runExpenseCleanupJob(organizationId: string) {
   const logger = createJobLogger();
-  const dataAccess = createDataAccess({ organizationId, logger });
+  const repo = createDataAccess({ organizationId, logger }).expenses.repo;
 
-  // Use factory's building blocks: repositories and reusable procedures
-  await dataAccess.expenses.reprocessReceiptDigitization({
-    batchSize: 100,
-    retryFailures: true,
-  });
+  // DB-agnostic deletion (2 roundtrips)
+  const staleExpenses = await repo.findBySpec(staleSpec, { id: true });
+  await repo.deleteMany(staleExpenses.map((e) => e.id)); // SmartRepo's only operates on IDs
+
+  logger.info(`Cleaned up ${staleExpenses.length} stale expenses`);
 }
 ```
 
-**On-demand specialized operations:**
+While this example uses clean, testable interfaces, it requires two database roundtrips - one to find matching records, another to delete them by ID. For performance-critical batch operations, this overhead can be improved by bypassing the DB-agnostic interface and using database-specific optimizations.
+
+Bypassing data access factory and instantiate repository to get access to native features:
 
 ```typescript
-async function runCategoryMigrationScript(organizationId: string) {
+async function runExpenseCleanupJobOptimized(organizationId: string) {
+  const logger = createJobLogger();
+  const mongoClient = getMongoClient(); // alternatively, pass the client as dependency
+
+  // Access repository factory directly for MongoDB-specific operations
+  const repo = createExpenseRepo(mongoClient, { organizationId });
+
+  // MongoDB-specific: efficient single deleteMany operation
+  const filter = repo.applyScopeForWrite(createStaleExpenseSpec(30).toFilter());
+  const result = await repo.collection.deleteMany(filter);
+
+  logger.info(`Cleaned up ${result.deletedCount} stale expenses`);
+}
+```
+
+The two approaches illustrate key **architectural tradeoffs**: the data access factory provides convenient, testable building blocks with DB-agnostic interfaces, but sometimes you need direct repository access for performance-critical operations. This is why having access to **both** the data access factory and underlying repository factories can be valuable - use the factory for most operations, but bypass it when you need DB-specific optimizations or advanced features not exposed through the abstract interface. The same considerations apply to [client-side stored procedures](#client-side-stored-procedures) - simpler ones can leverage factory building blocks, while complex procedures may need direct repository access for optimal performance.
+
+**Complex workflows instantiated on-demand:**
+
+```typescript
+async function runReceiptReprocessingJob(organizationId: string) {
   const logger = createJobLogger();
   const dataAccess = createDataAccess({ organizationId, logger });
 
-  // One-off migration: instantiate separately, use factory's building blocks
-  const migration = createCategoryMigration({
+  // Complex workflow: instantiate separately, use factory's building blocks
+  const reprocessor = createReceiptReprocessor({
     expenseRepo: dataAccess.expenses.repo,
-    tagRepo: dataAccess.tags.repo,
-    findExpensesByCategory: dataAccess.expenses.findByCategory,
+    findFailedReceipts: dataAccess.expenses.findFailedReceipts,
+    updateReceiptStatus: dataAccess.expenses.updateReceiptStatus,
     logger,
   });
 
-  await migration.execute({ dryRun: false, batchSize: 1000 });
+  await reprocessor.execute({ batchSize: 100, retryFailures: true });
 }
 ```
 
