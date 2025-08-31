@@ -1341,7 +1341,7 @@ async function handleSimpleExpenseUpdate(req: Request, res: Response) {
 
   // 2. Instantiate data access and call business logic
   const dataAccess = createDataAccess({ organizationId, logger });
-  const result = await updateExpenseWorkflow(
+  const result = await processExpenseUpdate(
     {
       getExpenseById: dataAccess.expenses.getExpenseById,
       updateExpense: dataAccess.expenses.repo.update,
@@ -1371,7 +1371,7 @@ async function handleExpenseUpdateWithAuth(req: Request, res: Response) {
   );
 
   // Problem: Business logic may also need the same expense data
-  const result = await updateExpenseWorkflow(
+  const result = await processExpenseUpdate(
     {
       getExpenseById: dataAccess.expenses.getExpenseById, // Potential fetch #2
       updateExpense: dataAccess.expenses.repo.update,
@@ -1403,7 +1403,7 @@ async function handleExpenseUpdate(req: Request, res: Response) {
   await checkCanWriteExpense({ userId, expense });
 
   // Business logic: Clean dependency injection with prefetched data
-  const result = await updateExpenseWorkflow(
+  const result = await processExpenseUpdate(
     {
       updateExpense: dataAccess.expenses.repo.update,
     },
@@ -1418,9 +1418,7 @@ The evolution sketched here shows key trade-offs: **pure dependency injection** 
 
 Alternative approaches like **internal caching** in the data access factory can solve duplication transparently, but introduce implicit behavior and potential side-effects that may not be obvious to all developers. The explicit prefetching approach trades some handler complexity for predictable, transparent behavior.
 
-**Composing multiple business operations:**
-
-As a final example, imagine we have a more complex expense update business logic that also needs to recalculate trip totals and potentially notify managers. Rather than handling all orchestration at the handler level, we can push the business orchestration down into the workflow function while keeping the handler focused on request/response concerns and dependency wiring:
+**Composing multiple business operations** - as a final example, imagine we have a more complex expense update logic that also needs to recalculate trip totals and potentially notify managers. Rather than handling all orchestration at the handler level, we can push the business orchestration down into the workflow function while keeping the handler focused on request/response concerns and dependency wiring:
 
 ```typescript
 async function handleComplexExpenseUpdate(req: Request, res: Response) {
@@ -1447,7 +1445,7 @@ async function handleComplexExpenseUpdate(req: Request, res: Response) {
   });
 
   // Business orchestration handled by the workflow function
-  const result = await updateExpenseWorkflow(
+  const result = await processExpenseUpdate(
     {
       updateExpense: dataAccess.expenses.repo.update,
       recalculateTrip,
@@ -1460,7 +1458,7 @@ async function handleComplexExpenseUpdate(req: Request, res: Response) {
 }
 ```
 
-This approach keeps the handler focused on request lifecycle concerns (validation, authorization, response) while pushing business orchestration logic into `updateExpenseWorkflow`. The workflow function receives business capabilities as dependencies, not raw data access methods, creating cleaner separation of concerns.
+This approach keeps the handler focused on request lifecycle concerns (validation, authorization, response) while pushing business orchestration logic into `processExpenseUpdate`. The business process function receives business capabilities as dependencies, not raw data access methods, creating cleaner separation of concerns.
 
 ### Background Jobs and Scripts
 
