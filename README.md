@@ -1345,7 +1345,6 @@ async function handleSimpleExpenseUpdate(req: Request, res: Response) {
     {
       getExpenseById: dataAccess.expenses.getExpenseById,
       updateExpense: dataAccess.expenses.repo.update,
-      recalculateTrip: dataAccess.trips.recalculateTotals,
     },
     { expenseData }
   );
@@ -1376,7 +1375,6 @@ async function handleExpenseUpdateWithAuth(req: Request, res: Response) {
     {
       getExpenseById: dataAccess.expenses.getExpenseById, // Potential fetch #2
       updateExpense: dataAccess.expenses.repo.update,
-      recalculateTrip: dataAccess.trips.recalculateTotals,
     },
     { expenseData }
   );
@@ -1404,11 +1402,10 @@ async function handleExpenseUpdate(req: Request, res: Response) {
   // Clean authorization: Pass actual data, not data access
   await checkCanWriteExpense({ userId, expense });
 
-  // Business logic: Mix prefetched data with data access methods
+  // Business logic: Clean dependency injection with prefetched data
   const result = await updateExpenseWorkflow(
     {
       updateExpense: dataAccess.expenses.repo.update,
-      recalculateTrip: dataAccess.trips.recalculateTotals,
     },
     { expenseData, expense }
   );
@@ -1420,6 +1417,50 @@ async function handleExpenseUpdate(req: Request, res: Response) {
 The evolution sketched here shows key trade-offs: **pure dependency injection** (middle example) keeps functions testable but can cause data duplication, while **strategic prefetching** (final example) optimizes performance but couples the handler to specific data needs. Apply what makes sense - prefetch data at the handler level when multiple operations need the same entities, and inject data access methods for operations that need fresh or different data.
 
 Alternative approaches like **internal caching** in the data access factory can solve duplication transparently, but introduce implicit behavior and potential side-effects that may not be obvious to all developers. The explicit prefetching approach trades some handler complexity for predictable, transparent behavior.
+
+**Composing multiple business operations:**
+
+As a final example, imagine we have a more complex expense update business logic that also needs to recalculate trip totals and potentially notify managers. Rather than handling all orchestration at the handler level, we can push the business orchestration down into the workflow function while keeping the handler focused on request/response concerns and dependency wiring:
+
+```typescript
+async function handleComplexExpenseUpdate(req: Request, res: Response) {
+  const { organizationId, userId } = validateAuth(req);
+  const expenseData = validatePayload(req.body);
+  const logger = createLogger(req);
+  const dataAccess = createDataAccess({ organizationId, logger });
+
+  // Prefetch data needed for authorization and business logic
+  const expense =
+    (await dataAccess.expenses.getExpenseById(expenseData.expenseId)) ??
+    throwNotFound();
+  await checkCanWriteExpense({ userId, expense });
+
+  // Create business functions that close over their data access needs
+  const recalculateTrip = partial(recalculateTripTotals, {
+    findExpensesByTrip: dataAccess.expenses.findByTripId,
+    updateTrip: dataAccess.trips.repo.update,
+  });
+
+  const notifyManager = partial(notifyExpenseUpdate, {
+    getUserById: dataAccess.users.getById,
+    sendEmail: dataAccess.notifications.sendEmail,
+  });
+
+  // Business orchestration handled by the workflow function
+  const result = await updateExpenseWorkflow(
+    {
+      updateExpense: dataAccess.expenses.repo.update,
+      recalculateTrip,
+      notifyManager,
+    },
+    { expenseData, expense, userId }
+  );
+
+  res.json(result);
+}
+```
+
+This approach keeps the handler focused on request lifecycle concerns (validation, authorization, response) while pushing business orchestration logic into `updateExpenseWorkflow`. The workflow function receives business capabilities as dependencies, not raw data access methods, creating cleaner separation of concerns.
 
 ### Background Jobs and Scripts
 
