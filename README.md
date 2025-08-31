@@ -1421,7 +1421,13 @@ Alternative approaches like **internal caching** in the data access factory can 
 
 ### Background Jobs and Scripts
 
-Background jobs, scripts, and other operational tasks typically have simpler authorization requirements but often need more complex data coordination:
+Background jobs, scripts, and other operational tasks typically have simpler authorization requirements but often need more complex data coordination.
+
+TODOs
+
+- mention cross-scope (org) operations
+- backups?
+- transactions
 
 **Simple batch processing:**
 
