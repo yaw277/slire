@@ -1415,7 +1415,7 @@ async function handleExpenseUpdate(req: Request, res: Response) {
 }
 ```
 
-The evolution shows key trade-offs: **pure dependency injection** (middle example) keeps functions testable but can cause data duplication, while **strategic prefetching** (final example) optimizes performance but couples the handler to specific data needs. Apply what makes sense - prefetch data at the handler level when multiple operations need the same entities, and inject data access methods for operations that need fresh or different data.
+The evolution sketched here shows key trade-offs: **pure dependency injection** (middle example) keeps functions testable but can cause data duplication, while **strategic prefetching** (final example) optimizes performance but couples the handler to specific data needs. Apply what makes sense - prefetch data at the handler level when multiple operations need the same entities, and inject data access methods for operations that need fresh or different data.
 
 Alternative approaches like **internal caching** in the data access factory can solve duplication transparently, but introduce implicit behavior and potential side-effects that may not be obvious to all developers. The explicit prefetching approach trades some handler complexity for predictable, transparent behavior.
 
