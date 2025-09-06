@@ -31,7 +31,6 @@
   - [Always Use Helper Methods for Direct Collection Operations](#always-use-helper-methods-for-direct-collection-operations)
 - [Decoupling Business Logic from Data Access](#decoupling-business-logic-from-data-access)
   - [Scope: Database Operations and Beyond](#scope-database-operations-and-beyond)
-  - [Principles for Decoupling](#principles-for-decoupling)
   - [Explicit Dependencies](#explicit-dependencies)
   - [Sandwich Method](#sandwich-method)
   - [Specialized Data Access Functions](#specialized-data-access-functions)
@@ -40,7 +39,6 @@
   - [Client-Side Stored Procedures](#client-side-stored-procedures)
   - [Query Abstraction Patterns](#query-abstraction-patterns)
   - [A Factory to Rule Them All?](#a-factory-to-rule-them-all)
-    - [Wait! What About My Data Access Adapters?](#wait-what-about-my-data-access-adapters)
   - [Application-Level Integration](#application-level-integration)
 
 ---
@@ -513,21 +511,21 @@ await repo.collection.updateMany(
 
 ## Decoupling Business Logic from Data Access
 
-### Scope: Database Operations and Beyond
-
-The architectural patterns and design principles discussed in this section focus primarily on **database operations** - repositories, queries, and data persistence patterns. However, these same principles are readily transferrable to other data-providing facilities like external APIs, file systems, caching layers, or message queues.
-
-When working with external services, consider organizing them into separate "service access" modules alongside your data access components. This separation maintains clear boundaries while allowing you to apply the same compositional patterns, dependency injection approaches, and testing strategies to both database operations and external service integrations.
-
-### Principles for Decoupling
-
 A fundamental principle of maintainable software design is keeping business logic independent from data access implementation. Injecting entire repository instances into business logic components creates tight coupling and obscures the actual data dependencies.
 
 A common counterargument is that "unit testing is easy when you can just mock the entire repository with a fake implementation that works in memory." This practice is indeed widespread with `DocumentService`, where developers create `FakeDocumentService` instances for testing. However, this apparent convenience is actually a design smell that encourages poor architecture. The ease of mocking entire repositories tempts developers to inject whole repository instances in the first place, because changes to business logic data access patterns don't require signature changes - the same repository interface accommodates any new data operations. This practice also encourages passing repositories down through call chains and intermixing data access with business logic, since the repository is always readily available wherever it's needed. While this seems convenient, it actually hides evolving dependencies and makes the true data access patterns invisible at the interface level. This directly leads to over-privileged access (since the full repository is always available), unclear dependencies (since the interface doesn't reveal actual usage), and tight coupling (since business logic becomes dependent on the complete repository contract rather than specific operations).
 
 This section presents principles for reducing coupling between data access and business logic. These are guidelines rather than rigid rules - design decisions depend on context, and the complexity of your specific problems will vary. Apply what makes sense for your situation without being overly dogmatic about it.
 
-Note that all examples below use functional approaches rather than classes, which better matches the stateless nature of typical data processing tasks (HTTP request handlers, scripts, etc.). Classes are designed to encapsulate operations over mutable state - something we rarely need for data processing functions. Following the convention where a function's first parameter is `deps` (dependencies) and subsequent parameters are processing inputs enables easy partial application and passing such functions around:
+### Scope: Database Operations and Beyond
+
+The architectural patterns and design principles discussed here focus primarily on **database operations** - repositories, queries, and data persistence patterns. Throughout this guide, we use "data access" to mean specifically database operations, and you could consider replacing all `DataAccess` types in our examples with `DbAccess` to make this distinction clearer. However, most of these same principles are readily transferrable to other data-providing facilities like external APIs, file systems, caching layers, etc.
+
+When working with external services, consider organizing them into separate "service access" modules alongside your data access components. This separation maintains clear boundaries while allowing you to apply the same compositional patterns, and dependency injection approaches to both database operations and external service integrations.
+
+Note that we don't cover caching concerns in this guide, though you might consider baking caching into some read functions to hide those implementation details from consumers. Whether to include caching at the repository level, as a separate concern, or within specific operations depends heavily on your application's specific performance requirements, cache invalidation needs, and consistency guarantees - the same contextual considerations apply to caching external service responses.
+
+Finally, note that all examples below use functional approaches rather than classes. Functions naturally match the statelessness of typical data processing tasks (HTTP request handlers, scripts, etc.), while classes are designed to encapsulate operations over mutable state - something we rarely need in our data processing implementations. Following the convention where a function's first parameter is `deps` (dependencies) and subsequent parameters are processing inputs enables easy partial application and passing such functions around:
 
 ```typescript
 // FUNCTIONAL APPROACH USED HERE
@@ -568,7 +566,7 @@ await handler({ process: processor.processExpense.bind(processor), otherDep: ...
 
 ### Explicit Dependencies
 
-As mentioned in the repository type section above, injecting whole repository instances creates coupling and hides actual dependencies. Instead, business logic should explicitly declare the specific data operations it needs.
+As mentioned in the previous chapter's [repository type section](#export-repository-types), injecting whole repository instances creates coupling and hides actual dependencies. Instead, business logic should explicitly declare the specific data operations it needs.
 
 ```typescript
 // ❌ BAD - whole repository injected, unclear dependencies
@@ -1633,11 +1631,11 @@ This gives us discoverability (adapters are part of the factory interface), cont
 
 However, consider some potential concerns: including too many adapters can contribute to factory bloat and the "god class" problem, adapters can be quite specialized and tightly coupled to specific business workflows which may not warrant factory inclusion. Balance convenience with maintainability when deciding which adapters deserve a place in your factory.
 
-## Application-Level Integration
+### Application-Level Integration
 
 Once you've designed your data access architecture, the next question is how to integrate these patterns into real applications. This chapter covers practical usage patterns for HTTP request handlers, background jobs, and other application contexts, showing how the data access building blocks come together in practice.
 
-### HTTP Request Handlers
+#### HTTP Request Handlers
 
 HTTP request handlers follow a consistent structure, but the approach evolves based on complexity.
 
@@ -1771,7 +1769,7 @@ async function handleComplexExpenseUpdate(req: Request, res: Response) {
 
 This approach keeps the handler focused on request lifecycle concerns (validation, authorization, response) while pushing business orchestration logic into `processExpenseUpdate`. The business process function receives business capabilities as dependencies, not raw data access methods, creating cleaner separation of concerns.
 
-### Background Jobs and Scripts
+#### Background Jobs and Scripts
 
 Background jobs, scripts, and other operational tasks typically run without user-based authorization concerns since they operate with system privileges rather than on behalf of individual users. However, they often need more complex data coordination and raise important questions about **what belongs in a data access factory** versus what should be instantiated on-demand.
 
