@@ -33,6 +33,7 @@
   - [Query Abstraction Patterns](#query-abstraction-patterns)
   - [A Factory to Rule Them All?](#a-factory-to-rule-them-all)
   - [Application-Level Integration](#application-level-integration)
+- [Addendum I - Pattern References (to be checked)](#addendum-i---pattern-references-to-be-checked)
 
 ---
 
@@ -1807,9 +1808,9 @@ async function runExpenseCleanupJobOptimized(organizationId: string) {
 }
 ```
 
-The two approaches illustrate key **architectural tradeoffs**: the data access factory provides convenient, testable building blocks with DB-agnostic interfaces, but sometimes you need direct repository access for performance-critical operations. This is why having access to **both** the data access factory and underlying repository factories can be valuable - use the factory for most operations, but bypass it when you need DB-specific optimizations or advanced features not exposed through the abstract interface. The same considerations apply to [client-side stored procedures](#client-side-stored-procedures) - simpler ones can leverage factory building blocks, while complex procedures may need direct repository access for optimal performance.
+The two approaches illustrate key architectural tradeoffs: the data access factory provides convenient, testable building blocks with DB-agnostic interfaces, but sometimes you need direct repository access for performance-critical operations. This is why having access to both the data access factory and underlying repository factories can be valuable - use the factory for most operations, but bypass it when you need DB-specific optimizations or advanced features not exposed through the abstract interface. The same considerations apply to [client-side stored procedures](#client-side-stored-procedures) - simpler ones can leverage factory building blocks, while complex procedures may need direct repository access for optimal performance.
 
-**Complex workflows instantiated on-demand:**
+Complex workflows instantiated on-demand:
 
 ```typescript
 async function runReceiptReprocessingJob(organizationId: string) {
@@ -1829,3 +1830,59 @@ async function runReceiptReprocessingJob(organizationId: string) {
 ```
 
 The key insight is that background jobs benefit from the same architectural patterns - they use factory building blocks for common operations but can bypass the factory for performance-critical or database-specific operations when needed.
+
+---
+
+## Addendum I - Pattern References (to be checked)
+
+This section identifies well-known architectural patterns that are discussed or implied throughout Part 2 of this guide. These pattern references could be integrated into their respective sections to provide additional context for readers familiar with architectural literature.
+
+### Dependency Injection Pattern
+
+**Section**: [Explicit Dependencies](#explicit-dependencies)  
+**Pattern Reference**: "This follows the Dependency Injection pattern, specifically Constructor Injection when using classes or Parameter Injection in the functional approach shown here. In hexagonal architecture, these would be your 'ports' - interfaces that define what your business logic needs from the outside world."
+
+### Template Method Pattern
+
+**Section**: [Sandwich Method](#sandwich-method)  
+**Pattern Reference**: "The sandwich method implements the Template Method pattern, defining the algorithmic skeleton (Read-Process-Write) while allowing the specific steps to vary. This is similar to the Command Query Responsibility Segregation (CQRS) principle of separating reads from writes, but applied at the operation level."
+
+### Adapter Pattern
+
+**Section**: [Data Access Adapters](#data-access-adapters)  
+**Pattern Reference**: "Data access adapters implement the Adapter pattern, translating between the repository interface and domain-specific needs. In hexagonal architecture terminology, these would be your 'adapters' - implementations that connect your business logic ports to external systems."
+
+### Facade Pattern
+
+**Section**: [The Unified Data Access Factory](#the-unified-data-access-factory)  
+**Pattern Reference**: "The unified data access factory serves as a Facade pattern, providing a simplified interface to a complex subsystem of repositories and data operations. This is comparable to an Application Service in Domain-Driven Design, orchestrating access to multiple domain services and repositories."
+
+### Strategy Pattern
+
+**Section**: [Modular Theme-Oriented Factories](#modular-theme-oriented-factories)  
+**Pattern Reference**: "The choice between unified vs modular factories represents different strategies for organizing data access. Each modular factory could be seen as a Strategy pattern implementation, where you can swap different data access strategies based on context (domain, team structure, deployment architecture)."
+
+### Clean Architecture/Hexagonal Architecture
+
+**Section**: [Scope: Database Operations and Beyond](#scope-database-operations-and-beyond) (or as general introduction to Part 2)  
+**Pattern Reference**: "The architectural approach described here aligns closely with Clean Architecture and Hexagonal Architecture principles: business logic at the center with explicit dependencies pointing inward, data access concerns pushed to the outer layers, and clear boundaries enforced through dependency injection."
+
+### Functional Programming vs OOP Patterns
+
+**Section**: [Scope: Database Operations and Beyond](#scope-database-operations-and-beyond)  
+**Pattern Reference**: "The functional approach used here (dependencies as first parameter) naturally supports partial application and function composition, common in functional programming. This contrasts with object-oriented approaches like Active Record or Data Mapper patterns, where data access behavior is encapsulated within classes."
+
+### Composite Pattern
+
+**Section**: Composite Operations (within unified factory discussion)  
+**Pattern Reference**: "The composite operations section demonstrates the Composite pattern, where complex operations are built by composing simpler repository operations. This is similar to the Application Service pattern in DDD, where application-level workflows orchestrate multiple domain operations."
+
+### Repository Pattern
+
+**Section**: Throughout, but could be explicitly noted  
+**Pattern Reference**: "The SmartRepo interface and its implementations follow the Repository pattern from Domain-Driven Design, providing a collection-like interface for accessing domain objects while encapsulating the mapping to the underlying persistence mechanism."
+
+### Factory Pattern
+
+**Section**: [Repository Factories](#repository-factories) and factory discussions  
+**Pattern Reference**: "The factory functions follow the Factory Method pattern, encapsulating object creation logic and providing a consistent interface for creating repository instances with proper configuration and dependencies."
