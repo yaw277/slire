@@ -54,6 +54,13 @@ Convert collaborative "we" to:
 - Lowercase words at beginning of bullet points when they are not complete sentences
 - Keep list items concise and parallel in structure
 
+### Table of Contents
+
+- Group related functions on single lines in the TOC separated by dashes
+- Example: `[getById](#getbyid) - [getByIds](#getbyids)` instead of separate bullet points
+- Maintains all navigation links while reducing visual clutter
+- Apply to API reference sections with many similar function pairs
+
 ### General Style
 
 - Clean, simple explanations without excessive formatting
