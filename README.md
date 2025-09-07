@@ -1834,18 +1834,6 @@ async function runReceiptReprocessingJob(organizationId: string) {
 
 The key insight is that background jobs benefit from the same architectural patterns - they use factory building blocks for common operations but can bypass the factory for performance-critical or database-specific operations when needed.
 
-## Perspective of the author
-
-Experience shows that fully featured ORMs/ODMs (let's use ORM from now on adressing both) hide away too much of the underlying persistence technology, scaring developers away from the underlying mechanics of the hidden DB or don't make them care enough. Query performance, DB rountrips etc. become an afterthought when problems arise and the up-to-now convenient abstractions show their weaknesses.
-
-ORMs were built to hide "vermeintliche komplexe" DB access details (query languages with complicated joins), to translate relational models to a more object-oriented perspective, and to provide a better development experience. But this is an ideal that was never reached (konnte nicht alle Versprechen einlösen) as most of the time developers have to "direkt zurückgreifen auf die unterliegende DB" to fix performance issues (complex joins, n+1 problem etc.).
-
-So what is the point of having ORMs targeting a single DB if we can use the native drivers directly (which most of the time have a good API, and in that sense I'd consider query languages like SQL a perfect API as well)? We've seen in the last chapters that separation of business logic and data access is anyway needed so there is really no point in having an extra ORM/ODM on top. (in fact, for example the official MongoDB docs also have "zurückhaltende Meinung" to such ORMs - add link!)
-
-The same holds for ORMS trying to abstract multiple DB technologies at once. Another culprit here is that they either have tailor the abstraction to common features or they have to leak some of the underlying persistence technologies. Both are suboptimal an imho not worth the effort.
-
-SmartRepo was born from a completely different (diametral?) perspective: Native DB access first, then realizing that we repeat over and over by doing the same basic DB access operations and by "umständlich" ensuring certain consistency guarantees we need. So what SmartRepo provides is just a basic set of operations that are likely to be implemented for different DBs (focus document oriented) and providing also a set of functions that help to enforce defined consistence settings when doing native operations.
-
 ## Why SmartRepo? Addressing the "Yet Another Library" Question
 
 It's fair to ask: "Why create another database abstraction library when so many already exist?" This question deserves a thoughtful response, especially given the abundance of ORMs (Object-Relational Mappers) and ODMs (Object-Document Mappers - we'll use "ORM" to refer to both throughout this section) and database abstractions in the Node.js ecosystem.
