@@ -40,6 +40,16 @@ Convert collaborative "we" to:
 - "we discussed earlier" → "discussed in the previous section"
 - "Here's how we can structure..." → "Here's how to structure..." or "Consider structuring..."
 
+### Voice Transition Example
+
+When moving from Part 1 to Part 2, the voice should shift from:
+
+**Part 1 style**: "You create repositories using the factory pattern..."
+
+**Part 2 style**: "The factory pattern provides several organizational benefits. Consider these approaches when designing your data access architecture. You can choose the approach that best fits your team structure and application complexity."
+
+This creates a natural transition from tool-specific instructions to broader architectural guidance.
+
 ## Formatting Preferences
 
 ### Bold Text Usage
@@ -68,6 +78,14 @@ Convert collaborative "we" to:
 - Avoid overly enthusiastic language
 - Prefer straightforward, professional tone
 
+### AI Assistant Instructions
+
+- Use double exclamation marks (`!!`) to mark inline instructions for AI assistance
+- These comments allow precise location-specific instructions without switching between editing panes
+- Examples: `!!explain abbreviations`, `!!provide links`, `!!research more examples`
+- Comments should be temporary and removed once the AI has addressed them
+- This workflow enables efficient document review with contextual instructions at exact locations
+
 ## Terminology Conventions
 
 ### "Data Access" Scope
@@ -95,13 +113,3 @@ Convert collaborative "we" to:
 - Keep examples focused and not overly complex
 - Use ellipsis (...) to shorten examples when full implementation would distract
 - Maintain consistent naming conventions across examples
-
-## Voice Transition Example
-
-When moving from Part 1 to Part 2, the voice should shift from:
-
-**Part 1 style**: "You create repositories using the factory pattern..."
-
-**Part 2 style**: "The factory pattern provides several organizational benefits. Consider these approaches when designing your data access architecture. You can choose the approach that best fits your team structure and application complexity."
-
-This creates a natural transition from tool-specific instructions to broader architectural guidance.
