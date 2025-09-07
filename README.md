@@ -32,13 +32,13 @@
   - [Business Logic with Transactions](#business-logic-with-transactions)
   - [Client-Side Stored Procedures](#client-side-stored-procedures)
   - [Query Abstraction Patterns](#query-abstraction-patterns)
-- [A Factory to Rule Them All?](#a-factory-to-rule-them-all)
+  - [A Factory to Rule Them All?](#a-factory-to-rule-them-all)
   - [What Belongs in a Data Access Factory?](#what-belongs-in-a-data-access-factory)
   - [The Unified Data Access Factory](#the-unified-data-access-factory)
   - [Modular Theme-Oriented Factories](#modular-theme-oriented-factories)
   - [Choosing a Factory Approach](#choosing-a-factory-approach)
   - [Data Access Adapters in Factories](#data-access-adapters-in-factories)
-- [Application-Level Integration](#application-level-integration)
+  - [Application-Level Integration](#application-level-integration)
   - [HTTP Request Handlers](#http-request-handlers)
   - [Background Jobs and Scripts](#background-jobs-and-scripts)
 - [Addendum I - Pattern References (to be checked)](#addendum-i---pattern-references-to-be-checked)
@@ -253,11 +253,11 @@ It's fair to ask: "Why create another database abstraction library when so many 
 
 Most existing solutions follow the traditional ORM approach: comprehensive abstractions that aim to hide database complexity entirely. While well-intentioned, this approach often creates more problems than it solves:
 
-Popular solutions like Mongoose, Prisma, TypeORM, and MikroORM each provide extensive feature sets with schema validation, relationship mapping, and query builders. However, experience shows that developers inevitably hit performance walls and must bypass these abstractions to access native database features for optimization - defeating the original purpose of the abstraction layer.
+Popular solutions like [Mongoose](https://mongoosejs.com/), [Prisma](https://www.prisma.io/), [TypeORM](https://typeorm.io/), and [MikroORM](https://mikro-orm.io/) each provide extensive feature sets with schema validation, relationship mapping, and query builders. However, experience shows that developers inevitably hit performance walls and must bypass these abstractions to access native database features for optimization - defeating the original purpose of the abstraction layer.
 
 ORMs promise to hide "supposedly complex" database details and translate relational concepts to object-oriented perspectives, but they rarely deliver on these promises. The N+1 problem, inefficient joins, excessive roundtrips, and other performance issues force developers to drop down to native queries anyway. If separation of business logic from data access is needed regardless (as we'll demonstrate in the architectural guidance sections), what value does the additional ORM layer actually provide?
 
-_Note: Sources documenting widespread ORM performance issues and the tendency for developers to bypass ORM abstractions should be added here to support these claims._
+The performance issues with ORMs are well-documented: Ted Neward famously called the ["Object-Relational Impedance Mismatch"](https://blog.codinghorror.com/object-relational-mapping-is-the-vietnam-war-of-computer-science/) the "Vietnam War of Computer Science." The [N+1 query problem](https://stackoverflow.com/questions/97197/what-is-the-n1-selects-problem-in-orm-object-relational-mapping) remains a persistent issue across all major ORMs, and developers frequently discuss [when to bypass ORM abstractions](https://enterprisecraftsmanship.com/posts/when-to-use-orm/) for performance-critical operations.
 
 Query languages like SQL and MongoDB's aggregation framework are already excellent APIs. Native drivers for modern databases provide clean, well-designed interfaces. The abstraction layer often becomes unnecessary overhead rather than genuine value.
 
@@ -275,9 +275,9 @@ Automatic Multi-tenancy: Built-in scoping eliminates the repetitive, error-prone
 
 Minimal, Focused Abstraction: Only the most common operations (basic CRUD) get convenience methods. Everything else uses native database features with optional consistency helpers.
 
-In this sense, SmartRepo follows the tradition of so-called MicroORMs like Dapper (C#), Massive (Node.js), and PetaPoco (C#). MicroORMs emerged as a response to the complexity and performance overhead of full-featured ORMs. They provide just enough abstraction to eliminate boilerplate for common operations while preserving direct access to the database's native capabilities.
+In this sense, SmartRepo follows the tradition of so-called MicroORMs like [Dapper](https://github.com/DapperLib/Dapper) (C#), [Massive](https://github.com/robconery/massive-js/) (Node.js), and [PetaPoco](https://github.com/CollaboratingPlatypus/PetaPoco) (C#). MicroORMs emerged as a response to the complexity and performance overhead of full-featured ORMs. They provide just enough abstraction to eliminate boilerplate for common operations while preserving direct access to the database's native capabilities.
 
-Where traditional ORMs try to hide the database entirely, MicroORMs enhance database access without obscuring it. They arose from the recognition that experienced developers often know their database technology well and don't want it abstracted away - they want tools that make database access more convenient without sacrificing control or performance.
+Where traditional ORMs try to hide the database entirely, MicroORMs enhance database access without obscuring it. They arose from the recognition that experienced developers often know their database technology well and don't want it abstracted away - they want tools that make database access more convenient without sacrificing control or performance. SmartRepo is exactly such a tool.
 
 ### What SmartRepo Is Not
 
