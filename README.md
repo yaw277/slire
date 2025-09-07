@@ -1648,11 +1648,11 @@ async function handleSimpleExpenseUpdate(req: Request, res: Response) {
   const expenseData = validatePayload(req.body);
 
   // 2. Instantiate data access and call business logic
-  const dataAccess = createDataAccessForRequest(req);
+  const repo = createDataAccessForRequest(req).expenses.repo;
   const result = await processExpenseUpdate(
     {
-      getExpenseById: dataAccess.expenses.getExpenseById,
-      updateExpense: dataAccess.expenses.repo.update,
+      getExpenseById: repo.getById,
+      updateExpense: repo.update,
     },
     { expenseData }
   );
@@ -1667,12 +1667,12 @@ With authorization - reveals data access duplication issues:
 async function handleExpenseUpdateWithAuth(req: Request, res: Response) {
   const { userId } = validateAuth(req);
   const expenseData = validatePayload(req.body);
-  const dataAccess = createDataAccessForRequest(req);
+  const repo = createDataAccessForRequest(req).expenses.repo;
 
   // Problem: Authorization needs expense data
   await checkCanWriteExpense(
     {
-      getExpenseById: dataAccess.expenses.getExpenseById, // Fetch #1
+      getExpenseById: repo.getById, // Fetch #1
     },
     { userId, expenseId: expenseData.expenseId }
   );
@@ -1680,8 +1680,8 @@ async function handleExpenseUpdateWithAuth(req: Request, res: Response) {
   // Problem: Business logic may also need the same expense data
   const result = await processExpenseUpdate(
     {
-      getExpenseById: dataAccess.expenses.getExpenseById, // Potential fetch #2
-      updateExpense: dataAccess.expenses.repo.update,
+      getExpenseById: repo.getById, // Potential fetch #2
+      updateExpense: repo.update,
     },
     { expenseData }
   );
@@ -1690,7 +1690,7 @@ async function handleExpenseUpdateWithAuth(req: Request, res: Response) {
 }
 ```
 
-Furthermore, this example reveals a **leaky abstraction problem**: the function `checkCanWriteExpense` receives both the data identifier (`expenseId`) and the method to fetch that data (`getExpenseById`), creating awkward coupling. The authorization function shouldn't need to know how to fetch expenses - it should work with the data directly.
+Furthermore, this example reveals a leaky abstraction problem: the function `checkCanWriteExpense` receives both the data identifier (`expenseId`) and the method to fetch that data (`getExpenseById`), creating awkward coupling. The authorization function shouldn't need to know how to fetch expenses - it should work with the data directly.
 
 **Refined approach** - strategic prefetching and mixed injection:
 
@@ -1698,12 +1698,11 @@ Furthermore, this example reveals a **leaky abstraction problem**: the function 
 async function handleExpenseUpdate(req: Request, res: Response) {
   const { userId } = validateAuth(req);
   const expenseData = validatePayload(req.body);
-  const dataAccess = createDataAccessForRequest(req);
+  const repo = createDataAccessForRequest(req).expenses.repo;
 
   // Strategic prefetch: Get data needed by multiple operations
   const expense =
-    (await dataAccess.expenses.getExpenseById(expenseData.expenseId)) ??
-    throwNotFound();
+    (await repo.getById(expenseData.expenseId)) ?? throwNotFound();
 
   // Clean authorization: Pass actual data, not data access
   await checkCanWriteExpense({ userId, expense });
@@ -1711,7 +1710,7 @@ async function handleExpenseUpdate(req: Request, res: Response) {
   // Business logic: Clean dependency injection with prefetched data
   const result = await processExpenseUpdate(
     {
-      updateExpense: dataAccess.expenses.repo.update,
+      updateExpense: repo.update,
     },
     { expenseData, expense }
   );
@@ -1734,7 +1733,7 @@ async function handleComplexExpenseUpdate(req: Request, res: Response) {
 
   // Prefetch data needed for authorization and business logic
   const expense =
-    (await dataAccess.expenses.getExpenseById(expenseData.expenseId)) ??
+    (await dataAccess.expenses.repo.getById(expenseData.expenseId)) ??
     throwNotFound();
   await checkCanWriteExpense({ userId, expense });
 
@@ -1745,8 +1744,8 @@ async function handleComplexExpenseUpdate(req: Request, res: Response) {
   });
 
   const notifyManager = partial(notifyExpenseUpdate, {
-    getUserById: dataAccess.users.getById,
-    sendEmail: dataAccess.notifications.sendEmail,
+    getUserById: dataAccess.users.repo.getById,
+    sendEmail: dataAccess.notifications.sendEmail, // TODO
   });
 
   // Business orchestration handled by the workflow function
