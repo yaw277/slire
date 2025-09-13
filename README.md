@@ -49,7 +49,7 @@
 
 ## What the Heck is SmartRepo?
 
-SmartRepo is a lightweight, database-agnostic interface that provides common CRUD operations with built-in consistency features, while preserving full access to native database capabilities. It currently supports MongoDB and Firestore implementations.
+SmartRepo is a lightweight, database-agnostic interface that provides common CRUD operations with built-in consistency features, designed to work seamlessly alongside native database access. It currently supports MongoDB and Firestore implementations.
 
 **Consistency features** are patterns that most applications need but typically implement inconsistently: automatic timestamps (createdAt, updatedAt), versioning for optimistic locking, soft-delete functionality, and audit trails. Rather than manually adding these to every operation, SmartRepo applies them automatically while still allowing native database access for complex queries and operations.
 
@@ -58,6 +58,8 @@ SmartRepo emerged from experience with DocumentService (Yokoy's internal ODM for
 For a deeper understanding of the problems this approach solves, see the [Why SmartRepo?](#why-smartrepo) section.
 
 ## A Quick Glimpse
+
+SmartRepo implements the repository pattern: a collection-like interface for accessing and manipulating domain objects. Each repository is bound to a specific database collection and organizational scope, providing type-safe CRUD operations that reduce boilerplate while working seamlessly alongside native database access for complex operations.
 
 Creating a repository instance:
 
@@ -237,7 +239,7 @@ SmartRepo emerged from a fundamentally different perspective: start with native 
 - **Automatic Multi-tenancy**: Built-in scoping eliminates the repetitive, error-prone task of manually adding tenant filters to every query
 - **Optional Consistency**: Instead of forcing rigid schemas, SmartRepo provides optional consistency guarantees (timestamps, versioning, soft-delete, audit trails) that work with native operations
 
-SmartRepo follows the tradition of MicroORMs like [Dapper](https://github.com/DapperLib/Dapper), [Massive](https://github.com/robconery/massive-js/), and [PetaPoco](https://github.com/CollaboratingPlatypus/PetaPoco). These tools emerged as a response to full ORM complexity, providing just enough abstraction to eliminate boilerplate while preserving direct database access. SmartRepo is exactly such a tool for document databases.
+SmartRepo follows the tradition of MicroORMs like [Dapper](https://github.com/DapperLib/Dapper), [Massive](https://github.com/robconery/massive-js/), and [PetaPoco](https://github.com/CollaboratingPlatypus/PetaPoco). These tools emerged as a response to full ORM complexity, providing just enough abstraction to eliminate boilerplate while working seamlessly alongside direct database access. SmartRepo is exactly such a tool for document databases.
 
 **What SmartRepo deliberately avoids:**
 
@@ -245,7 +247,7 @@ SmartRepo doesn't try to replace your database knowledge with abstractions. Inst
 
 **Bottom-up design from real patterns:**
 
-This approach emerged organically from observing teams repeatedly writing the same basic CRUD operations, inconsistently applying timestamps and audit trails, and struggling with tightly coupled business logic. SmartRepo codifies these proven patterns while preserving direct database access. The extensive architectural guidance in the second part of this document describes approaches that evolved from practical necessity, not theoretical design.
+This approach emerged organically from observing teams repeatedly writing the same basic CRUD operations, inconsistently applying timestamps and audit trails, and struggling with tightly coupled business logic. SmartRepo codifies these proven patterns while working alongside direct database access. The extensive architectural guidance in the second part of this document describes approaches that evolved from practical necessity, not theoretical design.
 
 ## API Reference Core CRUD Operations (SmartRepo interface)
 
