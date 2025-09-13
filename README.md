@@ -34,13 +34,13 @@
   - [Business Logic with Transactions](#business-logic-with-transactions)
   - [Client-Side Stored Procedures](#client-side-stored-procedures)
   - [Query Abstraction Patterns](#query-abstraction-patterns)
-- [A Factory to Rule Them All?](#a-factory-to-rule-them-all)
+  - [A Factory to Rule Them All?](#a-factory-to-rule-them-all)
   - [What Belongs in a Data Access Factory?](#what-belongs-in-a-data-access-factory)
   - [The Unified Data Access Factory](#the-unified-data-access-factory)
   - [Modular Theme-Oriented Factories](#modular-theme-oriented-factories)
   - [Choosing a Factory Approach](#choosing-a-factory-approach)
   - [Data Access Adapters in Factories](#data-access-adapters-in-factories)
-- [Application-Level Integration](#application-level-integration)
+  - [Application-Level Integration](#application-level-integration)
   - [HTTP Request Handlers](#http-request-handlers)
   - [Background Jobs and Scripts](#background-jobs-and-scripts)
 - [Addendum I - Pattern References (to be checked)](#addendum-i---pattern-references-to-be-checked)
@@ -49,56 +49,13 @@
 
 ## What the Heck is SmartRepo?
 
-`SmartRepo` is a DB-agnostic interface that provides simple DB operations. It comes with implementations for MongoDB and Firestore.
+SmartRepo is a lightweight, database-agnostic interface that provides common CRUD operations with built-in consistency features, while preserving full access to native database capabilities. It currently supports MongoDB and Firestore implementations.
 
-It started as an experiment trying to bridge the gap between the `DocumentService`'s insufficiencies and doing DB access via
-native SDKs only.
+**Consistency features** are patterns that most applications need but typically implement inconsistently: automatic timestamps (createdAt, updatedAt), versioning for optimistic locking, soft-delete functionality, and audit trails. Rather than manually adding these to every operation, SmartRepo applies them automatically while still allowing native database access for complex queries and operations.
 
-Some history first.
+SmartRepo emerged from experience with DocumentService (Yokoy's internal ODM for Firestore and later MongoDB) and then moving to pure native database access. Both approaches have their pros and cons: ODMs provide convenience but limit functionality, while native access offers full power but requires repetitive boilerplate. SmartRepo occupies a middle ground: more convenience than pure native drivers, but significantly less abstraction than traditional ORMs. It's designed for teams who understand their database technology and want to use it effectively without losing access to advanced features.
 
-Why we used `DocumentService` in the beginning:
-
-- de-facto standard in Yokoy
-- convenient for basic data access
-
-Problems of `DocumentService`:
-
-- poor transaction support
-  - bound to a single document or `DocumentTransactionWithAdditionalGetService`
-  - not possible to mix with DB operations that bypass `DocumentService`
-- leaky abstraction (batch operation, `DocumentMultiSubCollection*`, `DocumentCollectionGroupService`)
-- inflexible scope support
-- no out-of-the-box support for timestamping, versioning, soft-delete, audit traces
-
-Apart from that, we often see problems due to poor architectural choices or shortcuts
-when using `DocumentService`:
-
-- data access logic leaking into business logic, increasing coupling
-  - often, the full document service instance gets injected where a single or just a few methods would suffice
-  - arbitrary queries within business logic, leading to tests that check if queries work by emulating queries in memory (`FakeDocumentService`)
-- using `DocumentService` even when direct DB access would have reduced roundtrips or increased performance
-
-These points led us to use more and more native DB clients:
-
-- access to all features: projections, transactions, streaming, complex querying, atomic updates (like increments, add to
-  or remove from array properties, remove field), etc.
-- performance: reduction of DB roundtrips
-- improves decoupling between business logic and data access: since business logic must be unit-testable, we typically
-  inject fine-grained data access methods into it
-
-Problems/challenges of native data access:
-
-- requires integration tests
-- redundant code for basic CRUD ops
-- no out-of-the-box support for scoping, timestamping, versioning, soft-delete, audit traces
-- consistent injection of fine-grained data access methods requires discipline and slightly increases boilerplate
-
-`SmartRepo` aims to bring the best of these two worlds together by embracing a hybrid
-way to access data:
-
-- common CRUD operations out of the box, serving the majority of use cases
-- configurable consistency rules (timestamps, versioning, soft-delete) that get applied automatically
-- steps aside when you need more control (native clients) while helping maintain consistency rules
+For a deeper understanding of the problems this approach solves, see the [Why SmartRepo?](#why-smartrepo) section.
 
 ## A Quick Glimpse
 
