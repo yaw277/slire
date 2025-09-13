@@ -32,13 +32,13 @@
   - [Business Logic with Transactions](#business-logic-with-transactions)
   - [Client-Side Stored Procedures](#client-side-stored-procedures)
   - [Query Abstraction Patterns](#query-abstraction-patterns)
-  - [A Factory to Rule Them All?](#a-factory-to-rule-them-all)
+- [A Factory to Rule Them All?](#a-factory-to-rule-them-all)
   - [What Belongs in a Data Access Factory?](#what-belongs-in-a-data-access-factory)
   - [The Unified Data Access Factory](#the-unified-data-access-factory)
   - [Modular Theme-Oriented Factories](#modular-theme-oriented-factories)
   - [Choosing a Factory Approach](#choosing-a-factory-approach)
   - [Data Access Adapters in Factories](#data-access-adapters-in-factories)
-  - [Application-Level Integration](#application-level-integration)
+- [Application-Level Integration](#application-level-integration)
   - [HTTP Request Handlers](#http-request-handlers)
   - [Background Jobs and Scripts](#background-jobs-and-scripts)
 - [Addendum I - Pattern References (to be checked)](#addendum-i---pattern-references-to-be-checked)
@@ -245,7 +245,7 @@ This is no coincidence as the MongoDB API is considered very clean in that regar
 
 Finally, if you've been using `DocumentService` for most of your data access, you might wonder what a migration path to `SmartRepo` would look like. You're probably thinking it's quite an effort since you've injected `DocumentService` instances all over the place and the interfaces aren't compatible. That's correct, and the "Recommended Usage Patterns" section explains why we think that injecting repository instances everywhere isn't a good idea in the first place.
 
-## [DRAFT] Why SmartRepo? Addressing the "Yet Another Library" Question
+## (DRAFT) Why SmartRepo? Addressing the "Yet Another Library" Question
 
 It's fair to ask: "Why create another database abstraction library when so many already exist?" This question deserves a thoughtful response, especially given the abundance of ORMs (Object-Relational Mappers) and ODMs (Object-Document Mappers - we'll use "ORM" to refer to both throughout this section) and database abstractions in the Node.js ecosystem.
 
