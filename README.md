@@ -243,24 +243,29 @@ You may have noticed that SmartRepo's CRUD operations borrow a lot from MongoDB'
 updates with set/unset, variants with bulk support, filter syntax).
 This is no coincidence as the MongoDB API is considered very clean in that regard, and should also work well with other DB implementations.
 
+!! consider moving somewhere else
 Finally, if you've been using `DocumentService` for most of your data access, you might wonder what a migration path to `SmartRepo` would look like. You're probably thinking it's quite an effort since you've injected `DocumentService` instances all over the place and the interfaces aren't compatible. That's correct, and the "Recommended Usage Patterns" section explains why we think that injecting repository instances everywhere isn't a good idea in the first place.
 
 ## (DRAFT) Why SmartRepo? Addressing the "Yet Another Library" Question
 
-It's fair to ask: "Why create another database abstraction library when so many already exist?" This question deserves a thoughtful response, especially given the abundance of ORMs (Object-Relational Mappers) and ODMs (Object-Document Mappers - we'll use "ORM" to refer to both throughout this section) and database abstractions in the Node.js ecosystem.
+It's fair to ask: "Why create another database abstraction library when so many already exist?" This question deserves a thoughtful response, especially given the abundance of ORMs (Object-Relational Mappers) and ODMs (Object-Document Mappers - we'll use "ORM" to refer to both throughout this section) in the Node.js ecosystem.
 
 ### The Problem with Traditional ORMs
 
-!! fix links
-Most existing solutions follow the traditional ORM approach: comprehensive abstractions that aim to hide database complexity entirely. While well-intentioned, this approach often creates more problems than it solves:
+Most existing database abstraction libraries follow the traditional ORM approach: comprehensive abstractions that aim to hide database complexity entirely while providing extensive convenience features. Popular solutions like [Mongoose](https://mongoosejs.com/), [Prisma](https://www.prisma.io/orm), [TypeORM](https://typeorm.io/), and [MikroORM](https://mikro-orm.io/) each offer rich feature sets including schema validation, relationship mapping, query builders, and code generation.
 
-Popular solutions like [Mongoose](https://mongoosejs.com/), [Prisma](https://www.prisma.io/orm), [TypeORM](https://typeorm.io/), and [MikroORM](https://mikro-orm.io/) each provide extensive feature sets with schema validation, relationship mapping, and query builders. However, experience shows that developers inevitably hit performance walls and must bypass these abstractions to access native database features for optimization - defeating the original purpose of the abstraction layer.
+The ORM value proposition is compelling: translate "complex" database operations into familiar object-oriented patterns while providing developer-friendly conveniences like type safety, schema validation, and query builders. The goal is to make data access concerns blend seamlessly with application code.
 
-ORMs promise to hide "supposedly complex" database details and translate relational concepts to object-oriented perspectives (!!ODMs have a different focus and we should also focus more on ODMs unique selling points - query builders, schemas, validation), but they rarely deliver on these promises. The N+1 problem, inefficient joins, excessive roundtrips, and other performance issues force developers to drop down to native queries anyway. If separation of business logic from data access is needed regardless (as we'll demonstrate in the architectural guidance sections), what value does the additional ORM layer actually provide?
+However, this approach introduces several fundamental challenges:
 
-The performance issues with ORMs are well-documented: Ted Neward famously called the ["Object-Relational Impedance Mismatch"](https://blog.codinghorror.com/object-relational-mapping-is-the-vietnam-war-of-computer-science/) the "Vietnam War of Computer Science." The [N+1 query problem](https://stackoverflow.com/questions/97197/what-is-the-n1-selects-problem-in-orm-object-relational-mapping) remains a persistent issue across all major ORMs, and developers frequently discuss [when to bypass ORM abstractions](https://enterprisecraftsmanship.com/posts/when-to-use-orm/) for performance-critical operations.
+- **Impedance mismatch**: Structural and conceptual differences between relational/document databases and object-oriented programming models create ongoing friction
+- **Feature coverage gaps**: Not every database feature is supported, forcing compromises that are often overlooked by developers without deep database knowledge
+- **Performance bottlenecks**: The N+1 problem, inefficient query generation, and excessive roundtrips frequently require bypassing the ORM for performance-critical operations
+- **Additional complexity**: Another abstraction layer to learn and debug, especially problematic when native database features are eventually needed anyway
 
-Query languages like SQL and MongoDB's aggregation framework are already excellent APIs. Native drivers for modern databases provide clean, well-designed interfaces. The abstraction layer often becomes unnecessary overhead rather than genuine value.
+These challenges are well-documented in the development community. Ted Neward famously called the ["Object-Relational Impedance Mismatch"](https://blog.codinghorror.com/object-relational-mapping-is-the-vietnam-of-computer-science/) the "Vietnam War of Computer Science" (original article [here](https://www.odbms.org/wp-content/uploads/2013/11/031.01-Neward-The-Vietnam-of-Computer-Science-June-2006.pdf)). The [N+1 query problem](https://stackoverflow.com/questions/97197/what-is-the-n1-selects-problem-in-orm-object-relational-mapping) remains a persistent issue across all major ORMs, and developers frequently discuss [when to bypass ORM abstractions](https://www.google.com/search?q=when+to+bypass+ORMs+and+ODMs) for performance-critical operations.
+
+This raises a fundamental question: Why add another abstraction layer when native database clients and query languages are already excellent, well-designed APIs? Modern database drivers provide clean interfaces, comprehensive feature coverage, excellent documentation, and active maintenance. For experienced developers who understand their database technology, ORM abstractions often become unnecessary overhead rather than genuine value - another layer to learn, debug, and work around.
 
 ### SmartRepo's Native-First Philosophy
 
