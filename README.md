@@ -13,7 +13,6 @@
   - [delete](#delete) - [deleteMany](#deletemany)
   - [find](#find) - [findBySpec](#findbyspec)
   - [count](#count) - [countBySpec](#countbyspec)
-  - [stripSystemFields](#stripsystemfields)
 - [MongoDB Implementation](#mongodb-implementation)
   - [createSmartMongoRepo](#createsmartmongorepo)
   - [withSession](#withsession)
@@ -21,7 +20,6 @@
   - [collection](#collection)
   - [applyConstraints](#applyconstraints)
   - [buildUpdateOperation](#buildupdateoperation)
-  - [stripSystemFields](#stripsystemfields-1)
 - [Recommended Usage Patterns](#recommended-usage-patterns)
   - [Repository Factories](#repository-factories)
   - [Export Repository Types](#export-repository-types)
@@ -278,13 +276,13 @@ Bulk version of `getById` that retrieves multiple entities by their IDs. Returns
 
 ### create
 
-`create(entity: Entity): Promise<string>`
+`create(entity: T): Promise<string>`
 
-Creates a new entity in the repository. Returns the generated ID for the created entity. The repository automatically generates a unique ID. Scope fields are automatically applied during creation, and any configured timestamps (like `createdAt`) or versioning fields are added. The `Entity` type excludes only the `id` field and system-managed fields (timestamps, version). Scope properties can be included and will be validated to ensure they match the repository's configured scope values.
+Creates a new entity in the repository. Returns the generated ID for the created entity. The repository automatically generates a unique ID. Scope fields are automatically applied during creation, and any configured timestamps (like `createdAt`) or versioning fields are added. Ignores `id` system-managed fields (timestamps, version) if passed. Accepts scope properties if they match the repository's configured scope values.
 
 ### createMany
 
-`createMany(entities: Entity[]): Promise<string[]>`
+`createMany(entities: T[]): Promise<string[]>`
 
 Bulk version of `create` that creates multiple entities in a single operation. Returns an array of generated IDs corresponding to the created entities. The order of returned IDs matches the order of input entities. All entities are subject to the same automatic ID generation, scope validation, and consistency feature handling as the single `create` function.
 
@@ -353,12 +351,6 @@ Returns the number of entities that match the provided filter criteria. Like `fi
 `countBySpec<S extends Specification<T>>(spec: S): Promise<number>`
 
 Returns the number of entities that match the provided specification. Like `count`, the repository automatically applies scope filtering and soft delete exclusion. This method works with the same specification objects used by `findBySpec`, enabling consistent query logic across find and count operations. Returns 0 if no matching entities are found.
-
-### stripSystemFields
-
-`stripSystemFields<E extends Partial<T>>(entity: E): Omit<E, 'id'>`
-
-Helper method that removes system-managed fields from an entity object, making it ready for repository operations. Strips exactly the fields configured for this repository instance (id, timestamps, version, soft delete). For upsert operations, users explicitly handle the id field. See the MongoDB-specific implementation section for detailed usage examples and behavior.
 
 ## MongoDB Implementation
 
@@ -461,51 +453,6 @@ Helper method that applies the repository's scope filtering to a given filter ob
 `buildUpdateOperation(update: UpdateOperation<any>): any`
 
 Helper method that transforms a repository update operation into a MongoDB-compliant update document with all configured consistency features applied. Takes an `UpdateOperation` with `set` and/or `unset` fields and automatically adds timestamps (like `updatedAt`), version increments, and any other configured repository features. This ensures that direct collection operations maintain the same consistency behavior as the repository's built-in update methods. Essential when performing direct `updateOne`, `updateMany`, or `bulkWrite` operations on the collection.
-
-### stripSystemFields
-
-`stripSystemFields<E extends Partial<T>>(entity: E): Omit<E, 'id'>`
-
-Helper method that removes system-managed fields from an entity object, making it ready for repository operations. The method is context-aware and strips exactly the fields configured for this repository instance:
-
-- **Always removed**: `id` (user-facing identifier - handled explicitly for upsert)
-- **Conditionally removed** (based on repository configuration):
-  - Timestamp fields: `_createdAt`, `_updatedAt`, `_deletedAt` (or custom names)
-  - Version field: `_version` (or custom name)
-  - Soft delete field: `_deleted`
-
-This helper simplifies working with domain objects that might include system fields, eliminating the need for manual field stripping. For upsert operations, users explicitly merge the id back in, making the intent clear.
-
-```typescript
-const repo = createSmartMongoRepo({
-  collection: userCollection,
-  mongoClient,
-  options: { traceTimestamps: true, version: true },
-});
-
-// Domain object with system fields
-const domainUser = {
-  id: 'user-123',
-  name: 'John Doe',
-  email: 'john@example.com',
-  _createdAt: new Date('2020-01-01'), // System field - will be stripped
-  _version: 42, // System field - will be stripped
-};
-
-// Clean for repository operations
-const cleanUser = repo.stripSystemFields(domainUser);
-
-// Create operation - clean entity without any ids
-const newId = await repo.create(cleanUser);
-
-// Upsert operation - explicit id handling
-await repo.upsert({ ...cleanUser, id: domainUser.id });
-
-// System fields are automatically managed by the repository
-const saved = await repo.getById(domainUser.id);
-console.log(saved._createdAt); // Current timestamp, not 2020-01-01
-console.log(saved._version); // System-managed, not 42
-```
 
 ## Recommended Usage Patterns
 

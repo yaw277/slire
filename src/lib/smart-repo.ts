@@ -135,8 +135,8 @@ export type SmartRepo<
     projection: P
   ): Promise<[Projected<T, P>[], string[]]>;
 
-  create(entity: Entity): Promise<string>;
-  createMany(entities: Entity[]): Promise<string[]>;
+  create(entity: T): Promise<string>;
+  createMany(entities: T[]): Promise<string[]>;
 
   update(
     id: string,
@@ -149,12 +149,9 @@ export type SmartRepo<
     options?: { includeSoftDeleted?: boolean }
   ): Promise<void>;
 
-  upsert(
-    entity: Entity & { id: string },
-    options?: { includeSoftDeleted?: boolean }
-  ): Promise<void>;
+  upsert(entity: T, options?: { includeSoftDeleted?: boolean }): Promise<void>;
   upsertMany(
-    entities: (Entity & { id: string })[],
+    entities: T[],
     options?: { includeSoftDeleted?: boolean }
   ): Promise<void>;
 
@@ -174,11 +171,6 @@ export type SmartRepo<
 
   count(filter: Partial<T>): Promise<number>;
   countBySpec<S extends Specification<T>>(spec: S): Promise<number>;
-
-  // Helper to strip system-managed fields from entities
-  stripSystemFields<E extends Partial<T> & Record<string, unknown>>(
-    entity: E
-  ): Omit<E, 'id'>;
 };
 
 // Specification pattern types
@@ -523,13 +515,12 @@ export function createSmartMongoRepo<
     return { id: mongoId, ...filteredRest } as Projected<T, P>;
   }
 
-  // helper to map entity to Mongo doc, omitting all undefined and readonly properties
+  // helper to map entity to Mongo doc, omitting all undefined properties (system fields auto-managed)
   function toMongoDoc(
-    entity: Entity & { id?: string },
+    entity: T & { id?: string },
     op: 'create' | 'update' | 'upsert' | 'delete' | 'unset'
   ): any {
-    const { id, ...entityData } = entity;
-    validateNoReadonly(Object.keys(entityData), op);
+    const { id, _id, ...entityData } = entity;
     validateScopeProperties(entityData, op);
     const filtered = deepFilterUndefined(entityData);
 
@@ -618,12 +609,12 @@ export function createSmartMongoRepo<
       return [foundDocs, notFoundIds];
     },
 
-    create: async (entity: Entity): Promise<string> => {
+    create: async (entity: T): Promise<string> => {
       const ids = await repo.createMany([entity]);
       return ids[0];
     },
 
-    createMany: async (entities: Entity[]): Promise<string[]> => {
+    createMany: async (entities: T[]): Promise<string[]> => {
       if (entities.length < 1) {
         return [];
       }
@@ -682,14 +673,14 @@ export function createSmartMongoRepo<
     },
 
     upsert: async (
-      entity: Entity & { id: string },
+      entity: T,
       options?: { includeSoftDeleted?: boolean }
     ): Promise<void> => {
       await repo.upsertMany([entity], options);
     },
 
     upsertMany: async (
-      entities: (Entity & { id: string })[],
+      entities: T[],
       options?: { includeSoftDeleted?: boolean }
     ): Promise<void> => {
       if (entities.length < 1) {
@@ -826,32 +817,6 @@ export function createSmartMongoRepo<
           return operation(txRepo as SmartRepo<T, Scope, Entity>);
         });
       });
-    },
-
-    // Helper to strip system-managed fields from entities for easier create/upsert operations
-    stripSystemFields: <E extends Partial<T> & Record<string, unknown>>(
-      entity: E
-    ): Omit<E, 'id'> => {
-      const { id, _id, ...cleanEntity } = entity;
-
-      // Remove timestamp fields if configured
-      if (effectiveTraceTimestamps) {
-        delete (cleanEntity as any)[CREATED_KEY];
-        delete (cleanEntity as any)[UPDATED_KEY];
-        delete (cleanEntity as any)[DELETED_KEY];
-      }
-
-      // Remove version field if configured
-      if (versionEnabled) {
-        delete (cleanEntity as any)[VERSION_KEY];
-      }
-
-      // Remove soft delete field if configured
-      if (softDeleteEnabled) {
-        delete (cleanEntity as any)[SOFT_DELETE_KEY];
-      }
-
-      return cleanEntity as Omit<E, 'id'>;
     },
   };
 

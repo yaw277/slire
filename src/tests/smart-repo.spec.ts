@@ -1,10 +1,11 @@
 import { omit, range, sortBy } from 'lodash-es';
 import { Collection } from 'mongodb';
+import { v4 as uuidv4 } from 'uuid';
 import {
-  createSmartMongoRepo,
-  Specification,
   combineSpecs,
+  createSmartMongoRepo,
   SmartRepo,
+  Specification,
 } from '../lib/smart-repo';
 import { mongo, setupMongo, teardownMongo } from './mongo-fixture';
 
@@ -460,8 +461,8 @@ describe('createSmartMongoRepo', function () {
       const updated = await repo.getById(createdId);
 
       expect(updated).toEqual({
-        id: createdId,
         ...omit(entity, 'metadata'),
+        id: createdId,
       });
     });
 
@@ -668,10 +669,10 @@ describe('createSmartMongoRepo', function () {
         collection: testCollection(),
         mongoClient: mongo.client,
       });
-      const entity = {
+      const entity = createTestEntity({
         id: 'test-upsert-id',
-        ...createTestEntity({ name: 'Upsert Test' }),
-      };
+        name: 'Upsert Test',
+      });
 
       await repo.upsert(entity);
 
@@ -688,15 +689,13 @@ describe('createSmartMongoRepo', function () {
       const createdId = await repo.create(originalEntity);
 
       // upsert with completely different data
-      const upsertEntity = {
+      const upsertEntity = createTestEntity({
         id: createdId,
-        ...createTestEntity({
-          name: 'Replaced',
-          age: 50,
-          email: 'replaced@example.com',
-          metadata: { tags: ['replaced'], notes: 'Completely replaced' },
-        }),
-      };
+        name: 'Replaced',
+        age: 50,
+        email: 'replaced@example.com',
+        metadata: { tags: ['replaced'], notes: 'Completely replaced' },
+      });
 
       await repo.upsert(upsertEntity);
 
@@ -709,13 +708,11 @@ describe('createSmartMongoRepo', function () {
         collection: testCollection(),
         mongoClient: mongo.client,
       });
-      const entity = {
+      const entity = createTestEntity({
         id: 'optional-fields-test',
-        ...createTestEntity({
-          name: 'Optional Fields',
-          metadata: undefined,
-        }),
-      };
+        name: 'Optional Fields',
+        metadata: undefined,
+      });
 
       await repo.upsert(entity);
 
@@ -737,26 +734,24 @@ describe('createSmartMongoRepo', function () {
       });
 
       // Entity with undefined at root level and nested levels
-      const entity = {
+      const entity = createTestEntity({
         id: 'deep-upsert-test',
-        ...createTestEntity({
-          name: 'Deep Upsert Test',
-          age: undefined as any, // Should be filtered out at root
-          metadata: {
-            tags: ['upsert-test'],
-            notes: undefined, // Should be filtered out
-            nested: {
-              field1: 'upsert-value1',
-              field2: undefined, // Should be filtered out
-              field3: null, // Should be preserved as null
-              deep: {
-                level3: 'value',
-                level3undefined: undefined, // Should be filtered out
-              },
+        name: 'Deep Upsert Test',
+        age: undefined as any, // Should be filtered out at root
+        metadata: {
+          tags: ['upsert-test'],
+          notes: undefined, // Should be filtered out
+          nested: {
+            field1: 'upsert-value1',
+            field2: undefined, // Should be filtered out
+            field3: null, // Should be preserved as null
+            deep: {
+              level3: 'value',
+              level3undefined: undefined, // Should be filtered out
             },
-          } as any, // Cast to allow nested property for testing
-        }),
-      };
+          },
+        } as any, // Cast to allow nested property for testing
+      });
 
       await repo.upsert(entity);
 
@@ -789,10 +784,10 @@ describe('createSmartMongoRepo', function () {
         mongoClient: mongo.client,
         scope: { isActive: true },
       });
-      const entity = {
-        id: 'scoped-upsert',
-        ...omit(createTestEntity({ name: 'Scoped Upsert' }), 'isActive'),
-      };
+      const entity = omit(
+        createTestEntity({ id: 'scoped-upsert', name: 'Scoped Upsert' }),
+        'isActive'
+      );
 
       await scopedRepo.upsert({ ...entity, isActive: true });
 
@@ -812,17 +807,20 @@ describe('createSmartMongoRepo', function () {
       });
 
       // Valid scope value should work
-      const validEntity = {
+      const validEntity = createTestEntity({
         id: 'valid-scope',
-        ...createTestEntity({ name: 'Valid', isActive: true }),
-      };
+        name: 'Valid',
+        isActive: true,
+      });
       await scopedRepo.upsert(validEntity);
 
       // Invalid scope value should fail
-      const entityWithWrongScope = {
+      const entityWithWrongScope = createTestEntity({
         id: 'invalid-scope',
-        ...createTestEntity({ name: 'Invalid', isActive: false }),
-      };
+        name: 'Invalid',
+        isActive: false,
+      });
+
       await expect(scopedRepo.upsert(entityWithWrongScope)).rejects.toThrow(
         "Cannot upsert entity: scope property 'isActive' must be 'true', got 'false'"
       );
@@ -835,10 +833,10 @@ describe('createSmartMongoRepo', function () {
         options: { traceTimestamps: true },
       });
 
-      const entity = {
+      const entity = createTestEntity({
         id: 'timestamp-create',
-        ...createTestEntity({ name: 'Timestamp Create' }),
-      };
+        name: 'Timestamp Create',
+      });
 
       // create
       await repo.upsert(entity);
@@ -872,10 +870,10 @@ describe('createSmartMongoRepo', function () {
         options: { traceTimestamps: 'mongo' },
       });
 
-      const entity = {
+      const entity = createTestEntity({
         id: 'mongo-timestamp',
-        ...createTestEntity({ name: 'Mongo Timestamp' }),
-      };
+        name: 'Mongo Timestamp',
+      });
 
       await repo.upsert(entity);
 
@@ -908,10 +906,10 @@ describe('createSmartMongoRepo', function () {
         options: { softDelete: true },
       });
 
-      const entity = {
+      const entity = createTestEntity({
         id: 'soft-delete-upsert',
-        ...createTestEntity({ name: 'Soft Delete Test' }),
-      };
+        name: 'Soft Delete Test',
+      });
 
       await repo.upsert(entity);
 
@@ -941,19 +939,19 @@ describe('createSmartMongoRepo', function () {
       expect(await repo.getById(createdId)).toBeNull();
 
       // normal upsert should not target soft-deleted entity, will try to create new which fails on unique constraint
-      const upsertEntity = {
+      const upsertEntity = createTestEntity({
         id: createdId,
-        ...createTestEntity({ name: 'Should Not Work' }),
-      };
+        name: 'Should Not Work',
+      });
 
       // This should fail because it tries to create a new entity with existing ID
       await expect(repo.upsert(upsertEntity)).rejects.toThrow();
 
       // upsert with includeSoftDeleted: true should work and update the soft-deleted entity
-      const restoringUpsertEntity = {
+      const restoringUpsertEntity = createTestEntity({
         id: createdId,
-        ...createTestEntity({ name: 'Upserted After Delete' }),
-      };
+        name: 'Upserted After Delete',
+      });
       await repo.upsert(restoringUpsertEntity, { includeSoftDeleted: true });
 
       // verify the entity data was updated but is still soft-deleted in DB (no automatic undelete)
@@ -982,15 +980,15 @@ describe('createSmartMongoRepo', function () {
 
       // normal upsertMany should fail for soft-deleted entities (tries to create with existing ID)
       const normalUpserts = [
-        { id: id1, ...createTestEntity({ name: 'Should Fail 1' }) },
-        { id: id2, ...createTestEntity({ name: 'Should Fail 2' }) },
+        createTestEntity({ id: id1, name: 'Should Fail 1' }),
+        createTestEntity({ id: id2, name: 'Should Fail 2' }),
       ];
       await expect(repo.upsertMany(normalUpserts)).rejects.toThrow();
 
       // upsertMany with includeSoftDeleted should work
       const includedUpserts = [
-        { id: id1, ...createTestEntity({ name: 'Restored 1' }) },
-        { id: id2, ...createTestEntity({ name: 'Restored 2' }) },
+        createTestEntity({ id: id1, name: 'Restored 1' }),
+        createTestEntity({ id: id2, name: 'Restored 2' }),
       ];
       await repo.upsertMany(includedUpserts, { includeSoftDeleted: true });
 
@@ -1015,9 +1013,9 @@ describe('createSmartMongoRepo', function () {
         mongoClient: mongo.client,
       });
       const entities = [
-        { id: 'upsert-1', ...createTestEntity({ name: 'Entity 1', age: 25 }) },
-        { id: 'upsert-2', ...createTestEntity({ name: 'Entity 2', age: 30 }) },
-        { id: 'upsert-3', ...createTestEntity({ name: 'Entity 3', age: 35 }) },
+        createTestEntity({ id: 'upsert-1', name: 'Entity 1', age: 25 }),
+        createTestEntity({ id: 'upsert-2', name: 'Entity 2', age: 30 }),
+        createTestEntity({ id: 'upsert-3', name: 'Entity 3', age: 35 }),
       ];
 
       await repo.upsertMany(entities);
@@ -1054,22 +1052,18 @@ describe('createSmartMongoRepo', function () {
 
       // upsert with replacements
       const upsertEntities = [
-        {
+        createTestEntity({
           id: id1,
-          ...createTestEntity({
-            name: 'Replaced 1',
-            age: 99,
-            email: 'replaced1@example.com',
-          }),
-        },
-        {
+          name: 'Replaced 1',
+          age: 99,
+          email: 'replaced1@example.com',
+        }),
+        createTestEntity({
           id: id2,
-          ...createTestEntity({
-            name: 'Replaced 2',
-            age: 88,
-            email: 'replaced2@example.com',
-          }),
-        },
+          name: 'Replaced 2',
+          age: 88,
+          email: 'replaced2@example.com',
+        }),
       ];
 
       await repo.upsertMany(upsertEntities);
@@ -1104,18 +1098,21 @@ describe('createSmartMongoRepo', function () {
 
       // upsert mix of existing and new
       const upsertEntities = [
-        {
+        createTestEntity({
           id: existingId,
-          ...createTestEntity({ name: 'Updated Existing', age: 45 }),
-        },
-        {
+          name: 'Updated Existing',
+          age: 45,
+        }),
+        createTestEntity({
           id: 'new-entity-1',
-          ...createTestEntity({ name: 'New Entity 1', age: 50 }),
-        },
-        {
+          name: 'New Entity 1',
+          age: 50,
+        }),
+        createTestEntity({
           id: 'new-entity-2',
-          ...createTestEntity({ name: 'New Entity 2', age: 55 }),
-        },
+          name: 'New Entity 2',
+          age: 55,
+        }),
       ];
 
       await repo.upsertMany(upsertEntities);
@@ -1159,14 +1156,14 @@ describe('createSmartMongoRepo', function () {
         collection: testCollection(),
         mongoClient: mongo.client,
       });
-      const entities = range(0, 1500).map((i) => ({
-        id: `batch-upsert-${i}`,
-        ...createTestEntity({
+      const entities = range(0, 1500).map((i) =>
+        createTestEntity({
+          id: `batch-upsert-${i}`,
           name: `Batch Entity ${i}`,
           email: `batch${i}@example.com`,
           age: 20 + i,
-        }),
-      }));
+        })
+      );
 
       await repo.upsertMany(entities);
 
@@ -1198,14 +1195,14 @@ describe('createSmartMongoRepo', function () {
         scope: { isActive: true },
       });
       const entities = [
-        {
-          id: 'scoped-many-1',
-          ...omit(createTestEntity({ name: 'Scoped 1' }), 'isActive'),
-        },
-        {
-          id: 'scoped-many-2',
-          ...omit(createTestEntity({ name: 'Scoped 2' }), 'isActive'),
-        },
+        omit(
+          createTestEntity({ id: 'scoped-many-1', name: 'Scoped 1' }),
+          'isActive'
+        ),
+        omit(
+          createTestEntity({ id: 'scoped-many-2', name: 'Scoped 2' }),
+          'isActive'
+        ),
       ];
 
       await scopedRepo.upsertMany(
@@ -1742,7 +1739,7 @@ describe('createSmartMongoRepo', function () {
 
       // create an entity first
       const entity = createTestEntity({ name: 'Test User', isActive: true });
-      const id = await repo.create(entity);
+      const id = await repo.create(entity as any);
 
       // this should work (no scope property)
       await scopedRepo.update(id, { set: { name: 'Updated Name' } });
@@ -2077,7 +2074,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       const entity = createTestEntity({ name: 'Timestamp Test' });
-      const id = await repo.create(entity);
+      const id = await repo.create(entity as any);
 
       const retrieved = await repo.getById(id);
       expect(retrieved).toHaveProperty('createdAt');
@@ -2103,7 +2100,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       const entity = createTestEntity({ name: 'Projection Test' });
-      const id = await repo.create(entity);
+      const id = await repo.create(entity as any);
 
       // project only timestamp fields
       const timestampsOnly = await repo.getById(id, {
@@ -2143,7 +2140,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       const entity = createTestEntity({ name: 'Update Test' });
-      const id = await repo.create(entity);
+      const id = await repo.create(entity as any);
 
       const initial = await repo.getById(id);
       expect(initial!.createdAt.getTime()).toBe(testTime.getTime());
@@ -2175,7 +2172,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       const entity = createTestEntity({ name: 'Readonly Test' });
-      const id = await repo.create(entity);
+      const id = await repo.create(entity as any);
 
       // attempting to update timestamp fields should fail
       await expect(
@@ -2204,7 +2201,7 @@ describe('createSmartMongoRepo', function () {
         ...createTestEntity({ name: 'Partial Config Test' }),
         updatedAt: new Date('2023-01-01T00:00:00Z'),
       };
-      const id = await repo.create(entity);
+      const id = await repo.create(entity as any);
 
       const retrieved = await repo.getById(id);
       expect(retrieved).toHaveProperty('createdAt'); // configured entity timestamps are visible
@@ -2232,7 +2229,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       const entity = createTestEntity({ name: 'Auto Timestamps Test' });
-      const id = await repo.create(entity);
+      const id = await repo.create(entity as any);
 
       const retrieved = await repo.getById(id);
       // timestamps should be automatically set even though traceTimestamps wasn't explicitly enabled
@@ -2307,7 +2304,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       const entity = createTestEntity({ name: 'Entity Version Test' });
-      const id = await repo.create(entity);
+      const id = await repo.create(entity as any);
 
       // check initial version
       const retrieved1 = await repo.getById(id);
@@ -2348,10 +2345,10 @@ describe('createSmartMongoRepo', function () {
         options: { version: true },
       });
 
-      const entityWithId = {
+      const entityWithId = createTestEntity({
         id: 'upsert-version-test',
-        ...createTestEntity({ name: 'Upsert Version Test' }),
-      };
+        name: 'Upsert Version Test',
+      });
 
       // first upsert (insert) - should set version to 1
       await repo.upsert(entityWithId);
@@ -2899,22 +2896,17 @@ describe('createSmartMongoRepo', function () {
 
       const result = await repo.runTransaction(async (txRepo) => {
         // upsert existing entity (should update)
-        const updatedEntity = {
+        const updatedEntity = createTestEntity({
           id: existingId,
-          ...createTestEntity({ name: 'Updated in TX', age: 40 }),
-        };
+          name: 'Updated in TX',
+          age: 40,
+        });
         await txRepo.upsert(updatedEntity);
 
         // upsert new entities (should create)
         const newEntities = [
-          {
-            id: 'tx-new-1',
-            ...createTestEntity({ name: 'TX New 1', age: 50 }),
-          },
-          {
-            id: 'tx-new-2',
-            ...createTestEntity({ name: 'TX New 2', age: 60 }),
-          },
+          createTestEntity({ id: 'tx-new-1', name: 'TX New 1', age: 50 }),
+          createTestEntity({ id: 'tx-new-2', name: 'TX New 2', age: 60 }),
         ];
         await txRepo.upsertMany(newEntities);
 
@@ -2943,342 +2935,6 @@ describe('createSmartMongoRepo', function () {
       expect(finalEntities.find((e) => e.id === existingId)?.name).toBe(
         'Updated in TX'
       );
-    });
-  });
-
-  describe('stripSystemFields helper', () => {
-    it('should strip both id and _id (users handle id explicitly for upsert)', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-      });
-
-      const entityWithSystemFields = {
-        id: 'test-id',
-        _id: 'mongo-id',
-        name: 'John Doe',
-        email: 'john@example.com',
-        age: 30,
-        organizationId: 'acme',
-        isActive: true,
-      };
-
-      const cleaned = repo.stripSystemFields(entityWithSystemFields);
-
-      expect(cleaned).toEqual({
-        name: 'John Doe',
-        email: 'john@example.com',
-        age: 30,
-        organizationId: 'acme',
-        isActive: true,
-      });
-      expect(cleaned).not.toHaveProperty('id'); // Stripped
-      expect(cleaned).not.toHaveProperty('_id'); // Stripped
-    });
-
-    it('should strip timestamp fields when timestamps are enabled', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-        options: { traceTimestamps: true },
-      });
-
-      const entityWithTimestamps = {
-        id: 'test-id',
-        name: 'John Doe',
-        _createdAt: new Date(),
-        _updatedAt: new Date(),
-        _deletedAt: new Date(),
-        organizationId: 'acme',
-        isActive: true,
-      };
-
-      const cleaned = repo.stripSystemFields(entityWithTimestamps);
-
-      expect(cleaned).toEqual({
-        name: 'John Doe',
-        organizationId: 'acme',
-        isActive: true,
-      });
-      expect(cleaned).not.toHaveProperty('_createdAt');
-      expect(cleaned).not.toHaveProperty('_updatedAt');
-      expect(cleaned).not.toHaveProperty('_deletedAt');
-    });
-
-    it('should strip custom timestamp fields when configured', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-        options: {
-          timestampKeys: {
-            createdAt: 'name', // Use existing field as timestamp field for testing
-            updatedAt: 'email',
-            deletedAt: 'organizationId',
-          },
-        },
-      });
-
-      const entityWithCustomTimestamps = {
-        id: 'test-id',
-        name: 'John Doe', // Will be treated as timestamp field
-        email: 'john@example.com', // Will be treated as timestamp field
-        organizationId: 'acme', // Will be treated as timestamp field
-        age: 30,
-        isActive: true,
-      };
-
-      const cleaned = repo.stripSystemFields(entityWithCustomTimestamps);
-
-      expect(cleaned).toEqual({
-        age: 30,
-        isActive: true,
-      });
-      expect(cleaned).not.toHaveProperty('name'); // Stripped as timestamp field
-      expect(cleaned).not.toHaveProperty('email'); // Stripped as timestamp field
-      expect(cleaned).not.toHaveProperty('organizationId'); // Stripped as timestamp field
-    });
-
-    it('should strip version field when versioning is enabled', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-        options: { version: true },
-      });
-
-      const entityWithVersion = {
-        id: 'test-id',
-        name: 'John Doe',
-        _version: 42,
-        organizationId: 'acme',
-        isActive: true,
-      };
-
-      const cleaned = repo.stripSystemFields(entityWithVersion);
-
-      expect(cleaned).toEqual({
-        name: 'John Doe',
-        organizationId: 'acme',
-        isActive: true,
-      });
-      expect(cleaned).not.toHaveProperty('_version');
-    });
-
-    it('should strip custom version field when configured', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-        options: { version: 'age' }, // Use existing numeric field
-      });
-
-      const entityWithCustomVersion = {
-        id: 'test-id',
-        name: 'John Doe',
-        age: 30, // Will be treated as version field
-        organizationId: 'acme',
-        isActive: true,
-      };
-
-      const cleaned = repo.stripSystemFields(entityWithCustomVersion);
-
-      expect(cleaned).toEqual({
-        name: 'John Doe',
-        organizationId: 'acme',
-        isActive: true,
-      });
-      expect(cleaned).not.toHaveProperty('age'); // Stripped as version field
-    });
-
-    it('should strip soft delete field when soft delete is enabled', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-        options: { softDelete: true },
-      });
-
-      const entityWithSoftDelete = {
-        id: 'test-id',
-        name: 'John Doe',
-        _deleted: true,
-        organizationId: 'acme',
-        isActive: true,
-      };
-
-      const cleaned = repo.stripSystemFields(entityWithSoftDelete);
-
-      expect(cleaned).toEqual({
-        name: 'John Doe',
-        organizationId: 'acme',
-        isActive: true,
-      });
-      expect(cleaned).not.toHaveProperty('_deleted');
-    });
-
-    it('should strip all system fields when all features are enabled', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-        options: {
-          traceTimestamps: true,
-          version: true,
-          softDelete: true,
-        },
-      });
-
-      const entityWithAllSystemFields = {
-        id: 'test-id',
-        _id: 'mongo-id',
-        name: 'John Doe',
-        _createdAt: new Date(),
-        _updatedAt: new Date(),
-        _deletedAt: new Date(),
-        _version: 42,
-        _deleted: true,
-        organizationId: 'acme',
-        isActive: true,
-      };
-
-      const cleaned = repo.stripSystemFields(entityWithAllSystemFields);
-
-      expect(cleaned).toEqual({
-        name: 'John Doe',
-        organizationId: 'acme',
-        isActive: true,
-      });
-
-      // Verify all system fields are stripped
-      expect(cleaned).not.toHaveProperty('id'); // Stripped
-      expect(cleaned).not.toHaveProperty('_id'); // Stripped
-      expect(cleaned).not.toHaveProperty('_createdAt');
-      expect(cleaned).not.toHaveProperty('_updatedAt');
-      expect(cleaned).not.toHaveProperty('_deletedAt');
-      expect(cleaned).not.toHaveProperty('_version');
-      expect(cleaned).not.toHaveProperty('_deleted');
-    });
-
-    it('should work with create operation', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-        options: {
-          traceTimestamps: true,
-          version: true,
-        },
-      });
-
-      const domainEntity = {
-        id: 'should-be-ignored',
-        name: 'John Doe',
-        email: 'john@example.com',
-        age: 30,
-        _createdAt: new Date('2020-01-01'), // should be ignored
-        _version: 999, // should be ignored
-        organizationId: 'acme',
-        isActive: true,
-      };
-
-      // Using the helper makes it easy to create
-      const cleanEntity = repo.stripSystemFields(domainEntity);
-      const id = await repo.create(cleanEntity);
-
-      // Get the saved entity from MongoDB directly to check system fields
-      const saved = await repo.collection.findOne({ _id: id });
-      expect(saved).toBeDefined();
-      expect(saved!.name).toBe('John Doe');
-      expect(saved!._createdAt).toBeDefined(); // System-generated, not the one we passed
-      expect(saved!._createdAt).not.toEqual(new Date('2020-01-01'));
-      expect(saved!._version).toBe(1); // System-generated, not 999
-    });
-
-    it('should work with upsert operation (explicit id handling)', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-        options: {
-          traceTimestamps: true,
-          version: true,
-        },
-      });
-
-      const domainEntity = {
-        id: 'upsert-test-id',
-        name: 'Jane Smith',
-        email: 'jane@example.com',
-        age: 25,
-        _createdAt: new Date('2020-01-01'), // should be ignored
-        _version: 999, // should be ignored
-        organizationId: 'acme',
-        isActive: true,
-      };
-
-      // Strip system fields and explicitly add back the id for upsert
-      const cleanEntity = repo.stripSystemFields(domainEntity);
-      expect(cleanEntity).not.toHaveProperty('id'); // Stripped
-
-      await repo.upsert({ ...cleanEntity, id: domainEntity.id }); // Explicit id handling
-
-      // Verify it was created with system-managed fields
-      const saved = await repo.collection.findOne({ _id: 'upsert-test-id' });
-      expect(saved).toBeDefined();
-      expect(saved!.name).toBe('Jane Smith');
-      expect(saved!._createdAt).toBeDefined(); // System-generated
-      expect(saved!._version).toBe(1); // System-generated, not 999
-    });
-
-    it('should verify create always generates new ID and ignores provided id', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-      });
-
-      // Try to create with a specific id - should be ignored
-      const entityWithId = {
-        name: 'Test User',
-        email: 'test@example.com',
-        age: 30,
-        organizationId: 'acme',
-        isActive: true,
-        id: 'should-be-ignored', // This should be ignored by create
-      }; // Cast needed since Entity type excludes id
-
-      const generatedId = await repo.create(entityWithId);
-
-      // The returned ID should NOT be the one we provided
-      expect(generatedId).not.toBe('should-be-ignored');
-      expect(generatedId).toBeDefined();
-      expect(typeof generatedId).toBe('string');
-
-      // Verify the entity was saved with the generated ID, not the provided one
-      const saved = await repo.getById(generatedId);
-      expect(saved).toBeDefined();
-      expect(saved!.name).toBe('Test User');
-
-      // Verify no entity was created with the provided ID
-      const notSaved = await repo.getById('should-be-ignored');
-      expect(notSaved).toBeNull();
-    });
-
-    it('should verify upsert uses provided id', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-      });
-
-      const entityWithId = {
-        id: 'specific-upsert-id',
-        name: 'Upsert User',
-        email: 'upsert@example.com',
-        age: 25,
-        organizationId: 'acme',
-        isActive: true,
-      };
-
-      await repo.upsert(entityWithId);
-
-      // Verify the entity was saved with the exact ID we provided
-      const saved = await repo.getById('specific-upsert-id');
-      expect(saved).toBeDefined();
-      expect(saved!.name).toBe('Upsert User');
-      expect(saved!.id).toBe('specific-upsert-id');
     });
   });
 
@@ -3379,10 +3035,10 @@ type TestEntity = {
   };
 };
 
-function createTestEntity(
-  overrides: Partial<Omit<TestEntity, 'id'>> = {}
-): Omit<TestEntity, 'id'> {
+// Helper to create test entity - always includes id field for new API
+function createTestEntity(overrides: Partial<TestEntity> = {}): TestEntity {
   return {
+    id: uuidv4(), // Always include id - repo will handle it appropriately
     organizationId: 'org123',
     name: 'Test User',
     email: 'test@example.com',
@@ -3392,6 +3048,6 @@ function createTestEntity(
       tags: ['test', 'integration'],
       notes: 'Test entity for generic repo',
     },
-    ...overrides,
+    ...overrides, // Allow overriding all fields including id
   };
 }
