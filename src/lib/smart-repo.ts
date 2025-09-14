@@ -122,7 +122,7 @@ type MongoRepo<
 export type SmartRepo<
   T extends { id: string } & { [K in ReservedFields]?: never },
   Scope extends Partial<T> = {},
-  Entity extends Record<string, unknown> = Omit<T, 'id' | ScopeKeys<T, Scope>>
+  Entity extends Record<string, unknown> = Omit<T, 'id'>
 > = {
   getById(id: string): Promise<T | null>;
   getById<P extends Projection<T>>(
@@ -140,12 +140,12 @@ export type SmartRepo<
 
   update(
     id: string,
-    update: UpdateOperation<Entity>,
+    update: UpdateOperation<Omit<Entity, ScopeKeys<T, Scope>>>,
     options?: { includeSoftDeleted?: boolean }
   ): Promise<void>;
   updateMany(
     ids: string[],
-    update: UpdateOperation<Entity>,
+    update: UpdateOperation<Omit<Entity, ScopeKeys<T, Scope>>>,
     options?: { includeSoftDeleted?: boolean }
   ): Promise<void>;
 
@@ -240,10 +240,7 @@ export function createSmartMongoRepo<
   VersionConfig extends true | NumberKeys<T> | undefined = undefined,
   Entity extends Record<string, unknown> = Omit<
     T,
-    | 'id'
-    | ScopeKeys<T, Scope>
-    | TimestampKeys<T, TsConfig>
-    | VersionKey<T, VersionConfig>
+    'id' | TimestampKeys<T, TsConfig> | VersionKey<T, VersionConfig>
   >
 >({
   collection,
@@ -281,7 +278,8 @@ export function createSmartMongoRepo<
       ? DEFAULT_VERSION_KEY
       : String(versionConfig ?? DEFAULT_VERSION_KEY);
 
-  const READONLY_KEYS = new Set<string>([...Object.keys(scope), 'id', '_id']);
+  const SCOPE_KEYS = new Set<string>([...Object.keys(scope)]);
+  const READONLY_KEYS = new Set<string>(['id', '_id']);
   const HIDDEN_META_KEYS = new Set<string>([SOFT_DELETE_KEY]);
 
   const SOFT_DELETE_MARK = { [SOFT_DELETE_KEY]: true };
@@ -452,14 +450,37 @@ export function createSmartMongoRepo<
       : { ...input, ...scope };
   }
 
-  function validateNoReadonly(entity: any, operation: WriteOp): void {
-    const entityKeys = Object.keys(entity);
-    const conflictingKeys = entityKeys.filter((key) => READONLY_KEYS.has(key));
+  function validateNoReadonly(
+    keys: string[],
+    operation: WriteOp | 'unset'
+  ): void {
+    const readonlyKeys = keys.filter((key) => READONLY_KEYS.has(key));
+
+    // For update and unset operations, also check scope keys are not being modified
+    const scopeKeys =
+      operation === 'update' || operation === 'unset'
+        ? keys.filter((key) => SCOPE_KEYS.has(key))
+        : [];
+
+    const conflictingKeys = [...readonlyKeys, ...scopeKeys];
 
     if (conflictingKeys.length > 0) {
       throw new Error(
         `Cannot ${operation} readonly properties: ${conflictingKeys.join(', ')}`
       );
+    }
+  }
+
+  function validateScopeProperties(
+    entity: any,
+    operation: WriteOp | 'unset'
+  ): void {
+    for (const [key, expectedValue] of Object.entries(scope)) {
+      if (key in entity && entity[key] !== expectedValue) {
+        throw new Error(
+          `Cannot ${operation} entity: scope property '${key}' must be '${expectedValue}', got '${entity[key]}'`
+        );
+      }
     }
   }
 
@@ -498,15 +519,19 @@ export function createSmartMongoRepo<
   }
 
   // helper to map entity to Mongo doc, omitting all undefined and readonly properties
-  function toMongoDoc(entity: Entity & { id?: string }, op: WriteOp): any {
+  function toMongoDoc(
+    entity: Entity & { id?: string },
+    op: 'create' | 'update' | 'upsert' | 'delete' | 'unset'
+  ): any {
     const { id, ...entityData } = entity;
-    validateNoReadonly(entityData, op);
+    validateNoReadonly(Object.keys(entityData), op);
+    validateScopeProperties(entityData, op);
     const filtered = deepFilterUndefined(entityData);
     return { ...filtered, ...scope, _id: id ?? generateIdFn() };
   }
 
   // helper to build MongoDB update operation from set/unset
-  function buildUpdateOperation(update: UpdateOperation<Entity>): any {
+  function buildUpdateOperation<U>(update: UpdateOperation<U>): any {
     const { set, unset } = update;
     const mongoUpdate: any = {}; // cast to any due to MongoDB's complex UpdateFilter type system
 
@@ -524,19 +549,12 @@ export function createSmartMongoRepo<
     }
 
     if (set) {
-      validateNoReadonly(set, 'update');
+      validateNoReadonly(Object.keys(set), 'update');
       mongoUpdate.$set = deepFilterUndefined(set);
     }
 
     if (unset) {
-      const conflictingUnset = unset.filter((key) =>
-        READONLY_KEYS.has(String(key))
-      );
-      if (conflictingUnset.length > 0) {
-        throw new Error(
-          `Cannot unset readonly properties: ${conflictingUnset.join(', ')}`
-        );
-      }
+      validateNoReadonly(unset.map(String), 'unset');
       mongoUpdate.$unset = unset.reduce((acc, key) => {
         acc[String(key)] = '';
         return acc;
@@ -624,15 +642,15 @@ export function createSmartMongoRepo<
 
     update: async (
       id: string,
-      update: UpdateOperation<Entity>,
+      update: UpdateOperation<Omit<Entity, ScopeKeys<T, Scope>>>,
       options?: { includeSoftDeleted?: boolean }
     ): Promise<void> => {
-      await repo.updateMany([id], update, options);
+      await repo.updateMany([id], update as any, options);
     },
 
     updateMany: async (
       ids: string[],
-      update: UpdateOperation<Entity>,
+      update: UpdateOperation<Omit<Entity, ScopeKeys<T, Scope>>>,
       options?: { includeSoftDeleted?: boolean }
     ): Promise<void> => {
       if (ids.length < 1) {

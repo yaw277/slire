@@ -794,7 +794,7 @@ describe('createSmartMongoRepo', function () {
         ...omit(createTestEntity({ name: 'Scoped Upsert' }), 'isActive'),
       };
 
-      await scopedRepo.upsert(entity);
+      await scopedRepo.upsert({ ...entity, isActive: true });
 
       const retrieved = await scopedRepo.getById('scoped-upsert');
       expect(retrieved).toMatchObject({
@@ -804,19 +804,27 @@ describe('createSmartMongoRepo', function () {
       });
     });
 
-    it('should prevent upserting entities with readonly scope properties', async () => {
+    it('should validate scope property values during upsert', async () => {
       const scopedRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { isActive: true },
       });
-      const entityWithScope = {
+
+      // Valid scope value should work
+      const validEntity = {
+        id: 'valid-scope',
+        ...createTestEntity({ name: 'Valid', isActive: true }),
+      };
+      await scopedRepo.upsert(validEntity);
+
+      // Invalid scope value should fail
+      const entityWithWrongScope = {
         id: 'invalid-scope',
         ...createTestEntity({ name: 'Invalid', isActive: false }),
       };
-
-      await expect(scopedRepo.upsert(entityWithScope)).rejects.toThrow(
-        'Cannot upsert readonly properties: isActive'
+      await expect(scopedRepo.upsert(entityWithWrongScope)).rejects.toThrow(
+        "Cannot upsert entity: scope property 'isActive' must be 'true', got 'false'"
       );
     });
 
@@ -1200,7 +1208,9 @@ describe('createSmartMongoRepo', function () {
         },
       ];
 
-      await scopedRepo.upsertMany(entities);
+      await scopedRepo.upsertMany(
+        entities.map((e) => ({ ...e, isActive: true }))
+      );
 
       const [found] = await scopedRepo.getByIds([
         'scoped-many-1',
@@ -1673,9 +1683,9 @@ describe('createSmartMongoRepo', function () {
         scope: { isActive: true },
       });
 
-      const id = await scopedRepo.create(omit(createTestEntity(), 'isActive'));
+      const id = await scopedRepo.create(createTestEntity());
       const moreIds = await scopedRepo.createMany(
-        range(0, 2).map((_) => omit(createTestEntity(), 'isActive'))
+        range(0, 2).map((_) => createTestEntity())
       );
 
       const result = await scopedRepo.getByIds([id, ...moreIds], {
@@ -1688,26 +1698,33 @@ describe('createSmartMongoRepo', function () {
       ]);
     });
 
-    it('should prevent creating entities with scope properties', async () => {
+    it('should validate scope property values during create', async () => {
       const scopedRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { isActive: true },
       });
 
-      // this should work (no scope property)
-      const { isActive, ...validEntity } = createTestEntity({
+      // this should work (matching scope value)
+      const validEntity = createTestEntity({
         name: 'Valid User',
+        isActive: true, // matches scope
       });
       await scopedRepo.create(validEntity);
 
-      // this should fail at runtime
+      // this should also work (no scope property - will be added automatically)
+      const { isActive, ...entityWithoutScope } = createTestEntity({
+        name: 'Valid User No Scope',
+      });
+      await scopedRepo.create(entityWithoutScope as any);
+
+      // this should fail - wrong scope value
       const invalidEntity = createTestEntity({
         name: 'Invalid User',
-        isActive: false,
+        isActive: false, // doesn't match scope
       });
       await expect(scopedRepo.create(invalidEntity)).rejects.toThrow(
-        'Cannot create readonly properties: isActive'
+        "Cannot create entity: scope property 'isActive' must be 'true', got 'false'"
       );
     });
 
@@ -1756,7 +1773,7 @@ describe('createSmartMongoRepo', function () {
 
       // this should fail at runtime
       await expect(scopedRepo.createMany(entities)).rejects.toThrow(
-        'Cannot create readonly properties: isActive'
+        "Cannot create entity: scope property 'isActive' must be 'true', got 'false'"
       );
     });
 
@@ -2488,7 +2505,7 @@ describe('createSmartMongoRepo', function () {
           },
         })
       ).toThrow(
-        'Cannot update readonly properties: _id, organizationId, _createdAt'
+        'Cannot update readonly properties: _id, _createdAt, organizationId'
       );
     });
 
@@ -2509,46 +2526,45 @@ describe('createSmartMongoRepo', function () {
 
       const ids = await Promise.all([
         acmeRepo.create(
-          omit(
-            createTestEntity({ name: '0', isActive: true }),
-            'organizationId'
-          )
+          createTestEntity({
+            name: '0',
+            isActive: true,
+            organizationId: 'acme',
+          })
         ),
         acmeRepo.create(
-          omit(
-            createTestEntity({ name: '1', isActive: true }),
-            'organizationId'
-          )
+          createTestEntity({
+            name: '1',
+            isActive: true,
+            organizationId: 'acme',
+          })
         ),
         acmeRepo.create(
-          omit(
-            createTestEntity({ name: '2', isActive: false }),
-            'organizationId'
-          )
+          createTestEntity({
+            name: '2',
+            isActive: false,
+            organizationId: 'acme',
+          })
         ),
         fooRepo.create(
-          omit(
-            createTestEntity({ name: '3', isActive: true }),
-            'organizationId'
-          )
+          createTestEntity({ name: '3', isActive: true, organizationId: 'foo' })
         ),
         fooRepo.create(
-          omit(
-            createTestEntity({ name: '4', isActive: true }),
-            'organizationId'
-          )
+          createTestEntity({ name: '4', isActive: true, organizationId: 'foo' })
         ),
         fooRepo.create(
-          omit(
-            createTestEntity({ name: '5', isActive: false }),
-            'organizationId'
-          )
+          createTestEntity({
+            name: '5',
+            isActive: false,
+            organizationId: 'foo',
+          })
         ),
         fooRepo.create(
-          omit(
-            createTestEntity({ name: '6', isActive: false }),
-            'organizationId'
-          )
+          createTestEntity({
+            name: '6',
+            isActive: false,
+            organizationId: 'foo',
+          })
         ),
       ]);
 
@@ -2580,7 +2596,9 @@ describe('createSmartMongoRepo', function () {
         options: { softDelete: true },
       });
 
-      const id = await repo.create(omit(createTestEntity(), 'organizationId'));
+      const id = await repo.create(
+        createTestEntity({ organizationId: 'acme' })
+      );
 
       // Soft delete the entity
       await repo.delete(id);
@@ -2847,8 +2865,8 @@ describe('createSmartMongoRepo', function () {
       await scopedRepo.runTransaction(async (txRepo) => {
         // create entities through scoped repo (should automatically set isActive: true)
         const ids = await txRepo.createMany([
-          omit(createTestEntity({ name: 'Scoped TX 1' }), 'isActive'),
-          omit(createTestEntity({ name: 'Scoped TX 2' }), 'isActive'),
+          createTestEntity({ name: 'Scoped TX 1', isActive: true }),
+          createTestEntity({ name: 'Scoped TX 2', isActive: true }),
         ]);
 
         // verify entities are created with scope

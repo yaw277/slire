@@ -278,37 +278,37 @@ Bulk version of `getById` that retrieves multiple entities by their IDs. Returns
 
 `create(entity: Entity): Promise<string>`
 
-Creates a new entity in the repository. Returns the generated ID for the created entity. The repository automatically generates a unique ID unless a custom ID generator is configured. Scope fields are automatically applied during creation, and any configured timestamps (like `createdAt`) or versioning fields are added. The `Entity` type excludes the `id` field and any scope-related fields since these are managed by the repository.
+Creates a new entity in the repository. Returns the generated ID for the created entity. The repository automatically generates a unique ID. Scope fields are automatically applied during creation, and any configured timestamps (like `createdAt`) or versioning fields are added. The `Entity` type excludes only the `id` field and system-managed fields (timestamps, version). Scope properties can be included and will be validated to ensure they match the repository's configured scope values.
 
 ### createMany
 
 `createMany(entities: Entity[]): Promise<string[]>`
 
-Bulk version of `create` that creates multiple entities in a single operation. Returns an array of generated IDs corresponding to the created entities. The order of returned IDs matches the order of input entities. All entities are subject to the same automatic ID generation, scope application, and consistency feature handling as the single `create` function.
+Bulk version of `create` that creates multiple entities in a single operation. Returns an array of generated IDs corresponding to the created entities. The order of returned IDs matches the order of input entities. All entities are subject to the same automatic ID generation, scope validation, and consistency feature handling as the single `create` function.
 
 ### update
 
 `update(id: string, update: UpdateOperation<Entity>, options?: { includeSoftDeleted?: boolean }): Promise<void>`
 
-Updates a single entity identified by its ID. The update operation supports both `set` (to update fields) and `unset` (to remove optional fields) operations, which can be used individually or combined. The repository automatically applies scope filtering and excludes soft-deleted entities by default to ensure only active entities within the current scope can be updated. Use the `includeSoftDeleted: true` option to allow updating soft-deleted entities. Any configured timestamps (like `updatedAt`) or versioning increments are applied automatically. No error is thrown if the entity doesn't exist or doesn't match the scope.
+Updates a single entity identified by its ID. The update operation supports both `set` (to update fields) and `unset` (to remove optional fields) operations, which can be used individually or combined. The repository automatically applies scope filtering and excludes soft-deleted entities by default to ensure only active entities within the current scope can be updated. Use the `includeSoftDeleted: true` option to allow updating soft-deleted entities. Note that scope properties and system-managed fields (timestamps, version, id) cannot be modified through updates - the `UpdateOperation<Entity>` type excludes these fields, and attempting to update them will result in a runtime error. Any configured timestamps (like `updatedAt`) or versioning increments are applied automatically. No error is thrown if the entity doesn't exist or doesn't match the scope.
 
 ### updateMany
 
 `updateMany(ids: string[], update: UpdateOperation<Entity>, options?: { includeSoftDeleted?: boolean }): Promise<void>`
 
-Bulk version of `update` that applies the same update operation to multiple entities identified by their IDs. All entities are subject to the same scope filtering (including soft-delete exclusion by default) and can accept the same `includeSoftDeleted` option. Timestamp updates and versioning behavior are identical to the single `update` function. The operation succeeds even if some of the provided IDs don't exist or don't match the scope - only the valid, in-scope entities will be updated.
+Bulk version of `update` that applies the same update operation to multiple entities identified by their IDs. All entities are subject to the same scope filtering (including soft-delete exclusion by default) and can accept the same `includeSoftDeleted` option. Like the single `update` function, scope properties cannot be modified through bulk updates. Timestamp updates and versioning behavior are identical to the single `update` function. The operation succeeds even if some of the provided IDs don't exist or don't match the scope - only the valid, in-scope entities will be updated.
 
 ### upsert
 
 `upsert(entity: Entity & { id: string }, options?: { includeSoftDeleted?: boolean }): Promise<void>`
 
-Inserts a new entity if it doesn't exist, or updates an existing entity if it does exist, based on the provided ID. Unlike `create`, the entity must include an `id` field. The repository applies scope filtering and excludes soft-deleted entities by default during both the existence check and the actual operation. Use the `includeSoftDeleted: true` option to target soft-deleted entities for updates. For inserts, automatic timestamps (like `createdAt`) and initial versioning are applied. For updates, only update-related timestamps (like `updatedAt`) and version increments are applied. If an entity exists but is out of scope (or is soft-deleted without the option), it will be treated as non-existent and a new entity will be attempted to be created, which may fail due to unique constraints. Note that when the repository is configured with a custom ID generator, the user is responsible for providing correct IDs that conform to the generator's format.
+Inserts a new entity if it doesn't exist, or updates an existing entity if it does exist, based on the provided ID. Unlike `create`, the entity must include an `id` field. The repository applies scope filtering and excludes soft-deleted entities by default during both the existence check and the actual operation. Use the `includeSoftDeleted: true` option to target soft-deleted entities for updates. Like `create`, scope properties can be included in the entity and will be validated to ensure they match the repository's configured scope values. For inserts, automatic timestamps (like `createdAt`) and initial versioning are applied. For updates, only update-related timestamps (like `updatedAt`) and version increments are applied. If an entity exists but is out of scope (or is soft-deleted without the option), it will be treated as non-existent and a new entity will be attempted to be created, which may fail due to unique constraints. Note that when the repository is configured with a custom ID generator, the user is responsible for providing correct IDs that conform to the generator's format.
 
 ### upsertMany
 
 `upsertMany(entities: (Entity & { id: string })[], options?: { includeSoftDeleted?: boolean }): Promise<void>`
 
-Bulk version of `upsert` that performs insert-or-update operations on multiple entities in a single call. Each entity is processed independently with the same logic and options support as the single `upsert` function, including the same soft-delete filtering behavior and `includeSoftDeleted` option. This provides better performance than multiple individual upsert calls while maintaining the same consistency guarantees and scope filtering behavior.
+Bulk version of `upsert` that performs insert-or-update operations on multiple entities in a single call. Each entity is processed independently with the same logic and options support as the single `upsert` function, including the same soft-delete filtering behavior, `includeSoftDeleted` option, and scope property validation. This provides better performance than multiple individual upsert calls while maintaining the same consistency guarantees and scope filtering behavior.
 
 ### delete
 
@@ -364,7 +364,45 @@ Factory function that creates a MongoDB repository instance implementing the Sma
 
 #### Scope
 
-The `scope` parameter defines filtering criteria that are automatically applied to all repository operations. For example, passing `{ organizationId: 'acme-123' }` ensures that all reads, writes, updates, and deletes only affect entities belonging to that organization. The scope is merged with user-provided filters and becomes part of every database operation, providing automatic multi-tenancy or data partitioning without requiring explicit filtering in each method call.
+The `scope` parameter defines filtering criteria that are automatically applied to all repository operations. For example, passing `{ organizationId: 'acme-123' }` ensures that all reads and deletes only affect entities belonging to that organization. The scope is merged with user-provided filters and becomes part of every database operation, providing automatic multi-tenancy or data partitioning without requiring explicit filtering in each method call.
+
+**Scope Property Handling by Operation:**
+
+- **Create/Upsert**: Scope properties can be included in entities and are validated to match the repository's configured scope values
+- **Updates**: Scope properties are explicitly excluded and cannot be modified
+- **Reads/Deletes**: Automatically filtered by scope values
+
+```typescript
+const repo = createSmartMongoRepo({
+  collection: userCollection,
+  mongoClient,
+  scope: { organizationId: 'acme-123', isActive: true },
+});
+
+// ✅ Create: scope properties allowed and validated
+await repo.create({
+  name: 'John Doe',
+  organizationId: 'acme-123', // matches scope ✓
+  isActive: true, // matches scope ✓
+});
+
+// ❌ Create: scope validation fails
+await repo.create({
+  name: 'Jane Doe',
+  organizationId: 'different', // doesn't match scope - throws error
+  isActive: true,
+});
+
+// ✅ Update: scope properties excluded from updates
+await repo.update(userId, {
+  set: { name: 'Updated Name' }, // OK - non-scope property
+});
+
+// ❌ Update: scope properties cannot be updated (compile-time error)
+await repo.update(userId, {
+  set: { organizationId: 'new-org' }, // TypeScript error + runtime error
+});
+```
 
 #### Options
 
