@@ -107,7 +107,7 @@ type MongoRepo<
   Entity extends Record<string, unknown>
 > = SmartRepo<T, Scope, Entity> & {
   collection: Collection<any>;
-  applyRepoConstraints: (
+  applyConstraints: (
     input: any,
     options?: { includeSoftDeleted?: boolean }
   ) => any;
@@ -442,7 +442,7 @@ export function createSmartMongoRepo<
     }
   }
 
-  function applyRepoConstraints(
+  function applyConstraints(
     input: any,
     options?: { includeSoftDeleted?: boolean }
   ): any {
@@ -501,9 +501,7 @@ export function createSmartMongoRepo<
   function toMongoDoc(entity: Entity & { id?: string }, op: WriteOp): any {
     const { id, ...entityData } = entity;
     validateNoReadonly(entityData, op);
-    const filtered = Object.fromEntries(
-      Object.entries(entityData).filter(([_, value]) => value !== undefined)
-    );
+    const filtered = deepFilterUndefined(entityData);
     return { ...filtered, ...scope, _id: id ?? generateIdFn() };
   }
 
@@ -527,7 +525,7 @@ export function createSmartMongoRepo<
 
     if (set) {
       validateNoReadonly(set, 'update');
-      mongoUpdate.$set = set;
+      mongoUpdate.$set = deepFilterUndefined(set);
     }
 
     if (unset) {
@@ -562,7 +560,7 @@ export function createSmartMongoRepo<
         ? Object.fromEntries(Object.keys(projection).map((k) => [k, 1]))
         : undefined;
       const doc = await collection.findOne(
-        applyRepoConstraints({ _id: id }),
+        applyConstraints({ _id: id }),
         withSessionOptions(
           mongoProjection ? { projection: mongoProjection } : undefined
         )
@@ -579,7 +577,7 @@ export function createSmartMongoRepo<
         : undefined;
       const docs = await collection
         .find(
-          applyRepoConstraints({ _id: { $in: ids } }),
+          applyConstraints({ _id: { $in: ids } }),
           withSessionOptions(
             mongoProjection ? { projection: mongoProjection } : undefined
           )
@@ -608,7 +606,7 @@ export function createSmartMongoRepo<
       for (const entityChunk of chunks) {
         const ops = entityChunk.map((e) => {
           const doc = toMongoDoc(e, 'create');
-          const filter = applyRepoConstraints({ _id: doc._id });
+          const filter = applyConstraints({ _id: doc._id });
           const update: any = applyVersion(
             'create',
             applyTimestamps('create', { $setOnInsert: doc })
@@ -647,7 +645,7 @@ export function createSmartMongoRepo<
       for (const idChunk of chunks) {
         const updateOperation = buildUpdateOperation(update);
         await collection.updateMany(
-          applyRepoConstraints({ _id: { $in: idChunk } }, options),
+          applyConstraints({ _id: { $in: idChunk } }, options),
           updateOperation,
           withSessionOptions()
         );
@@ -675,7 +673,7 @@ export function createSmartMongoRepo<
       for (const entityChunk of chunks) {
         const ops = entityChunk.map((entity) => {
           const doc = toMongoDoc(entity, 'upsert');
-          const filter = applyRepoConstraints({ _id: doc._id }, options);
+          const filter = applyConstraints({ _id: doc._id }, options);
           const update = applyVersion(
             'upsert',
             applyTimestamps('upsert', {
@@ -697,7 +695,7 @@ export function createSmartMongoRepo<
       const chunks = chunk(ids, MONGODB_IN_OPERATOR_MAX_CLAUSES);
 
       for (const idChunk of chunks) {
-        const filter = applyRepoConstraints({ _id: { $in: idChunk } });
+        const filter = applyConstraints({ _id: { $in: idChunk } });
         if (softDeleteEnabled) {
           const updateOperation = applyVersion(
             'delete',
@@ -727,7 +725,7 @@ export function createSmartMongoRepo<
         : undefined;
       const docs = await collection
         .find(
-          applyRepoConstraints(mongoFilter),
+          applyConstraints(mongoFilter),
           withSessionOptions(
             mongoProjection ? { projection: mongoProjection } : undefined
           )
@@ -749,7 +747,7 @@ export function createSmartMongoRepo<
       const { id, ...restFilter } = filter;
       const mongoFilter = id ? { _id: id, ...restFilter } : restFilter;
       return await collection.countDocuments(
-        applyRepoConstraints(mongoFilter),
+        applyConstraints(mongoFilter),
         withSessionOptions()
       );
     },
@@ -767,7 +765,7 @@ export function createSmartMongoRepo<
     collection: collection,
 
     // Adds scope filter and soft-delete filter (if configured), with option to include soft-deleted
-    applyRepoConstraints: applyRepoConstraints,
+    applyConstraints: applyConstraints,
 
     // Applies enrichments (such as timestamps) and enforces constraints (writing readonly props not allowed)
     buildUpdateOperation: buildUpdateOperation as (
@@ -803,4 +801,34 @@ export function createSmartMongoRepo<
   };
 
   return repo;
+}
+
+// helper to recursively remove undefined properties from objects
+function deepFilterUndefined(obj: any): any {
+  if (obj === null || obj === undefined || typeof obj !== 'object') {
+    return obj;
+  }
+
+  // Handle arrays - preserve undefined elements (they become null in MongoDB)
+  if (Array.isArray(obj)) {
+    return obj.map(deepFilterUndefined);
+  }
+
+  // Handle Date and other special objects - don't filter their properties
+  if (
+    obj instanceof Date ||
+    obj instanceof RegExp ||
+    obj.constructor !== Object
+  ) {
+    return obj;
+  }
+
+  // Handle plain objects - recursively filter undefined properties
+  const filtered: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      filtered[key] = deepFilterUndefined(value);
+    }
+  }
+  return filtered;
 }

@@ -94,6 +94,47 @@ describe('createSmartMongoRepo', function () {
         isActive: true,
       });
     });
+
+    it('should recursively filter undefined properties (not store as null)', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      // Entity with undefined at root level and nested levels
+      const entity = createTestEntity({
+        name: 'Deep Test',
+        metadata: {
+          tags: ['test'],
+          notes: undefined, // Should be filtered out
+          nested: {
+            field1: 'value1',
+            field2: undefined, // Should be filtered out
+            field3: null, // Should be preserved as null
+          },
+        } as any, // Cast to allow nested property for testing
+        // Root level undefined field
+        email: undefined as any,
+      });
+
+      const createdId = await repo.create(entity);
+
+      // Check what actually got stored in MongoDB
+      const rawDoc = await rawTestCollection().findOne({ _id: createdId });
+
+      // Verify undefined fields are absent (not null)
+      expect(rawDoc).not.toHaveProperty('email');
+      expect(rawDoc?.metadata).not.toHaveProperty('notes');
+      expect(rawDoc?.metadata?.nested).not.toHaveProperty('field2');
+
+      // Verify null fields are preserved as null
+      expect(rawDoc?.metadata?.nested?.field3).toBe(null);
+
+      // Verify defined fields are present
+      expect(rawDoc?.name).toBe('Deep Test');
+      expect(rawDoc?.metadata?.tags).toEqual(['test']);
+      expect(rawDoc?.metadata?.nested?.field1).toBe('value1');
+    });
   });
 
   describe('createMany', () => {
@@ -501,6 +542,60 @@ describe('createSmartMongoRepo', function () {
       const retrieved = await repo.getById('non-existent-id');
       expect(retrieved).toBeNull();
     });
+
+    it('should recursively filter undefined properties in set operations (not store as null)', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      // First create an entity
+      const initialEntity = createTestEntity({ name: 'Initial Name' });
+      const createdId = await repo.create(initialEntity);
+
+      // Update with nested undefined properties
+      await repo.update(createdId, {
+        set: {
+          name: 'Updated Name',
+          metadata: {
+            tags: ['updated'],
+            notes: undefined, // Should be filtered out
+            nested: {
+              field1: 'updated-value1',
+              field2: undefined, // Should be filtered out
+              field3: null, // Should be preserved as null
+              deep: {
+                level3: 'updated',
+                level3undefined: undefined, // Should be filtered out
+              },
+            },
+          } as any, // Cast to allow nested property for testing
+          // Root level undefined in set operation
+          age: undefined as any, // Should be filtered out
+        },
+      });
+
+      // Check what actually got stored in MongoDB
+      const rawDoc = await rawTestCollection().findOne({ _id: createdId });
+
+      // Verify undefined fields in nested objects are absent (not null)
+      // Note: age remains from original entity since undefined was filtered from set operation
+      expect(rawDoc?.age).toBe(30); // Original value remains
+      expect(rawDoc?.metadata).not.toHaveProperty('notes');
+      expect(rawDoc?.metadata?.nested).not.toHaveProperty('field2');
+      expect(rawDoc?.metadata?.nested?.deep).not.toHaveProperty(
+        'level3undefined'
+      );
+
+      // Verify null fields are preserved as null
+      expect(rawDoc?.metadata?.nested?.field3).toBe(null);
+
+      // Verify defined fields are present and updated
+      expect(rawDoc?.name).toBe('Updated Name');
+      expect(rawDoc?.metadata?.tags).toEqual(['updated']);
+      expect(rawDoc?.metadata?.nested?.field1).toBe('updated-value1');
+      expect(rawDoc?.metadata?.nested?.deep?.level3).toBe('updated');
+    });
   });
 
   describe('updateMany', () => {
@@ -633,6 +728,59 @@ describe('createSmartMongoRepo', function () {
         age: 30,
         isActive: true,
       });
+    });
+
+    it('should recursively filter undefined properties in upsert (not store as null)', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      // Entity with undefined at root level and nested levels
+      const entity = {
+        id: 'deep-upsert-test',
+        ...createTestEntity({
+          name: 'Deep Upsert Test',
+          age: undefined as any, // Should be filtered out at root
+          metadata: {
+            tags: ['upsert-test'],
+            notes: undefined, // Should be filtered out
+            nested: {
+              field1: 'upsert-value1',
+              field2: undefined, // Should be filtered out
+              field3: null, // Should be preserved as null
+              deep: {
+                level3: 'value',
+                level3undefined: undefined, // Should be filtered out
+              },
+            },
+          } as any, // Cast to allow nested property for testing
+        }),
+      };
+
+      await repo.upsert(entity);
+
+      // Check what actually got stored in MongoDB
+      const rawDoc = await rawTestCollection().findOne({
+        _id: 'deep-upsert-test',
+      });
+
+      // Verify undefined fields are absent (not null)
+      expect(rawDoc).not.toHaveProperty('age');
+      expect(rawDoc?.metadata).not.toHaveProperty('notes');
+      expect(rawDoc?.metadata?.nested).not.toHaveProperty('field2');
+      expect(rawDoc?.metadata?.nested?.deep).not.toHaveProperty(
+        'level3undefined'
+      );
+
+      // Verify null fields are preserved as null
+      expect(rawDoc?.metadata?.nested?.field3).toBe(null);
+
+      // Verify defined fields are present
+      expect(rawDoc?.name).toBe('Deep Upsert Test');
+      expect(rawDoc?.metadata?.tags).toEqual(['upsert-test']);
+      expect(rawDoc?.metadata?.nested?.field1).toBe('upsert-value1');
+      expect(rawDoc?.metadata?.nested?.deep?.level3).toBe('value');
     });
 
     it('should work with scoped repositories', async () => {
@@ -2344,7 +2492,7 @@ describe('createSmartMongoRepo', function () {
       );
     });
 
-    it('applyRepoConstraints with default behavior', async () => {
+    it('applyConstraints with default behavior', async () => {
       const acmeRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
@@ -2408,7 +2556,7 @@ describe('createSmartMongoRepo', function () {
 
       const results = await testCollection()
         .aggregate([
-          { $match: fooRepo.applyRepoConstraints({}) },
+          { $match: fooRepo.applyConstraints({}) },
           {
             $group: {
               _id: '$isActive',
@@ -2424,7 +2572,7 @@ describe('createSmartMongoRepo', function () {
       ]);
     });
 
-    it('applyRepoConstraints with includeSoftDeleted option', async () => {
+    it('applyConstraints with includeSoftDeleted option', async () => {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
@@ -2438,7 +2586,7 @@ describe('createSmartMongoRepo', function () {
       await repo.delete(id);
 
       // Default behavior - should not match soft-deleted entity
-      await repo.collection.updateOne(repo.applyRepoConstraints({ _id: id }), {
+      await repo.collection.updateOne(repo.applyConstraints({ _id: id }), {
         $set: { _notInModel: 'default' },
       });
 
@@ -2447,7 +2595,7 @@ describe('createSmartMongoRepo', function () {
 
       // With includeSoftDeleted: true - should match soft-deleted entity
       await repo.collection.updateOne(
-        repo.applyRepoConstraints({ _id: id }, { includeSoftDeleted: true }),
+        repo.applyConstraints({ _id: id }, { includeSoftDeleted: true }),
         { $set: { _notInModel: 'included' } }
       );
 
