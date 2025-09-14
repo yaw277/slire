@@ -356,7 +356,7 @@ Returns the number of entities that match the provided specification. Like `coun
 
 ### stripSystemFields
 
-`stripSystemFields<U>(entity: U): Omit<U, 'id'>`
+`stripSystemFields<E extends Partial<T>>(entity: E): Omit<E, 'id'>`
 
 Helper method that removes system-managed fields from an entity object, making it ready for repository operations. Strips exactly the fields configured for this repository instance (id, timestamps, version, soft delete). For upsert operations, users explicitly handle the id field. See the MongoDB-specific implementation section for detailed usage examples and behavior.
 
@@ -464,7 +464,7 @@ Helper method that transforms a repository update operation into a MongoDB-compl
 
 ### stripSystemFields
 
-`stripSystemFields<U>(entity: U): Omit<U, 'id'>`
+`stripSystemFields<E extends Partial<T>>(entity: E): Omit<E, 'id'>`
 
 Helper method that removes system-managed fields from an entity object, making it ready for repository operations. The method is context-aware and strips exactly the fields configured for this repository instance:
 

@@ -176,9 +176,9 @@ export type SmartRepo<
   countBySpec<S extends Specification<T>>(spec: S): Promise<number>;
 
   // Helper to strip system-managed fields from entities
-  stripSystemFields<U extends Record<string, unknown>>(
-    entity: U
-  ): Omit<U, 'id'>;
+  stripSystemFields<E extends Partial<T> & Record<string, unknown>>(
+    entity: E
+  ): Omit<E, 'id'>;
 };
 
 // Specification pattern types
@@ -829,9 +829,9 @@ export function createSmartMongoRepo<
     },
 
     // Helper to strip system-managed fields from entities for easier create/upsert operations
-    stripSystemFields: <U extends Record<string, unknown>>(
-      entity: U
-    ): Omit<U, 'id'> => {
+    stripSystemFields: <E extends Partial<T> & Record<string, unknown>>(
+      entity: E
+    ): Omit<E, 'id'> => {
       const { id, _id, ...cleanEntity } = entity;
 
       // Remove timestamp fields if configured
@@ -851,7 +851,7 @@ export function createSmartMongoRepo<
         delete (cleanEntity as any)[SOFT_DELETE_KEY];
       }
 
-      return cleanEntity as Omit<U, 'id'>;
+      return cleanEntity as Omit<E, 'id'>;
     },
   };
 
