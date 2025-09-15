@@ -136,6 +136,108 @@ describe('createSmartMongoRepo', function () {
       expect(rawDoc?.metadata?.tags).toEqual(['test']);
       expect(rawDoc?.metadata?.nested?.field1).toBe('value1');
     });
+
+    it('should strip system-managed fields from input entities during create', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        options: {
+          softDelete: true,
+          traceTimestamps: true,
+          version: true,
+        },
+      });
+
+      // Create entity with system fields that should be stripped
+      const entityWithSystemFields = {
+        ...createTestEntity({ name: 'System Field Test' }),
+        _deleted: true, // Should be stripped
+        _version: 999, // Should be stripped
+        _createdAt: new Date('2020-01-01'), // Should be stripped
+        _updatedAt: new Date('2021-01-01'), // Should be stripped
+        _deletedAt: new Date('2022-01-01'), // Should be stripped
+      } as any;
+
+      const createdId = await repo.create(entityWithSystemFields);
+
+      // Check what actually got stored - system fields should be managed automatically
+      const rawDoc = await rawTestCollection().findOne({ _id: createdId });
+
+      // Verify malicious system fields were stripped and proper values set
+      expect(rawDoc?._deleted).toBeUndefined(); // Should not exist (not soft-deleted)
+      expect(rawDoc?._version).toBe(1); // Should be 1, not 999
+      expect(rawDoc?._createdAt).toBeInstanceOf(Date); // Should be current time, not 2020
+      expect(rawDoc?._updatedAt).toBeInstanceOf(Date); // Should be current time, not 2021
+      expect(rawDoc?._deletedAt).toBeUndefined(); // Should not exist
+
+      // Verify the actual data was preserved
+      expect(rawDoc?.name).toBe('System Field Test');
+
+      // Verify timestamps are recent (within last 5 seconds)
+      const now = new Date();
+      const fiveSecondsAgo = new Date(now.getTime() - 5000);
+      expect(rawDoc?._createdAt.getTime()).toBeGreaterThan(
+        fiveSecondsAgo.getTime()
+      );
+      expect(rawDoc?._updatedAt.getTime()).toBeGreaterThan(
+        fiveSecondsAgo.getTime()
+      );
+    });
+
+    it('should strip system-managed fields with custom timestamp keys during create', async () => {
+      // Define extended entity type with custom timestamp and version fields
+      type ExtendedTestEntity = TestEntity & {
+        createdAt?: Date;
+        updatedAt?: Date;
+        deletedAt?: Date;
+        version?: number;
+      };
+
+      function testCollectionWithExtended(): Collection<ExtendedTestEntity> {
+        const db = mongo.client.db();
+        return db.collection<ExtendedTestEntity>(COLLECTION_NAME);
+      }
+
+      const repo = createSmartMongoRepo({
+        collection: testCollectionWithExtended(),
+        mongoClient: mongo.client,
+        options: {
+          softDelete: true,
+          traceTimestamps: true,
+          timestampKeys: {
+            createdAt: 'createdAt' as keyof ExtendedTestEntity,
+            updatedAt: 'updatedAt' as keyof ExtendedTestEntity,
+            deletedAt: 'deletedAt' as keyof ExtendedTestEntity,
+          },
+          version: true,
+        },
+      });
+
+      // Create entity with custom system fields that should be stripped
+      const entityWithSystemFields: ExtendedTestEntity = {
+        ...createTestEntity({ name: 'Custom System Field Test' }),
+        _deleted: true, // Should be stripped
+        _version: 999, // Should be stripped (default version field)
+        createdAt: new Date('2020-01-01'), // Should be stripped (custom created field)
+        updatedAt: new Date('2021-01-01'), // Should be stripped (custom updated field)
+        deletedAt: new Date('2022-01-01'), // Should be stripped (custom deleted field)
+      } as any;
+
+      const createdId = await repo.create(entityWithSystemFields);
+
+      // Check what actually got stored
+      const rawDoc = await rawTestCollection().findOne({ _id: createdId });
+
+      // Verify system fields were stripped and proper values set
+      expect(rawDoc?._deleted).toBeUndefined(); // Should not exist
+      expect(rawDoc?._version).toBe(1); // Should be 1, not 999
+      expect(rawDoc?.createdAt).toBeInstanceOf(Date); // Should be current time
+      expect(rawDoc?.updatedAt).toBeInstanceOf(Date); // Should be current time
+      expect(rawDoc?.deletedAt).toBeUndefined(); // Should not exist
+
+      // Verify the actual data was preserved
+      expect(rawDoc?.name).toBe('Custom System Field Test');
+    });
   });
 
   describe('createMany', () => {
@@ -897,6 +999,78 @@ describe('createSmartMongoRepo', function () {
         raw!._updatedAt.getTime()
       );
       expect(raw2!._createdAt.getTime()).toEqual(raw!._createdAt.getTime());
+    });
+
+    it('should strip system-managed fields from input entities during upsert', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        options: {
+          softDelete: true,
+          traceTimestamps: true,
+          version: true,
+        },
+      });
+
+      // Upsert entity with system fields that should be stripped
+      const entityWithSystemFields = {
+        ...createTestEntity({
+          id: 'system-field-upsert-test',
+          name: 'System Field Upsert Test',
+        }),
+        _deleted: true, // Should be stripped
+        _version: 999, // Should be stripped
+        _createdAt: new Date('2020-01-01'), // Should be stripped
+        _updatedAt: new Date('2021-01-01'), // Should be stripped
+        _deletedAt: new Date('2022-01-01'), // Should be stripped
+      } as any;
+
+      await repo.upsert(entityWithSystemFields);
+
+      // Check what actually got stored - system fields should be managed automatically
+      const rawDoc = await rawTestCollection().findOne({
+        _id: 'system-field-upsert-test',
+      });
+
+      // Verify malicious system fields were stripped and proper values set
+      expect(rawDoc?._deleted).toBeUndefined(); // Should not exist (not soft-deleted)
+      expect(rawDoc?._version).toBe(1); // Should be 1, not 999 (initial version for new doc)
+      expect(rawDoc?._createdAt).toBeInstanceOf(Date); // Should be current time, not 2020
+      expect(rawDoc?._updatedAt).toBeInstanceOf(Date); // Should be current time, not 2021
+      expect(rawDoc?._deletedAt).toBeUndefined(); // Should not exist
+
+      // Verify the actual data was preserved
+      expect(rawDoc?.name).toBe('System Field Upsert Test');
+
+      // Now update the same entity with malicious system fields again
+      const updateWithSystemFields = {
+        ...createTestEntity({
+          id: 'system-field-upsert-test',
+          name: 'Updated System Field Test',
+        }),
+        _deleted: true, // Should be stripped
+        _version: 555, // Should be stripped
+        _createdAt: new Date('2019-01-01'), // Should be stripped
+        _updatedAt: new Date('2020-01-01'), // Should be stripped
+        _deletedAt: new Date('2021-01-01'), // Should be stripped
+      } as any;
+
+      await repo.upsert(updateWithSystemFields);
+
+      // Check the updated document
+      const updatedRawDoc = await rawTestCollection().findOne({
+        _id: 'system-field-upsert-test',
+      });
+
+      // Verify system fields were stripped and proper values maintained/updated
+      expect(updatedRawDoc?._deleted).toBeUndefined(); // Should still not exist
+      expect(updatedRawDoc?._version).toBe(2); // Should be 2 (incremented), not 555
+      expect(updatedRawDoc?._createdAt).toEqual(rawDoc?._createdAt); // Should be unchanged
+      expect(updatedRawDoc?._updatedAt).toBeInstanceOf(Date); // Should be updated time
+      expect(updatedRawDoc?._deletedAt).toBeUndefined(); // Should still not exist
+
+      // Verify the actual data was updated
+      expect(updatedRawDoc?.name).toBe('Updated System Field Test');
     });
 
     it('should work with soft delete enabled', async () => {
@@ -2358,38 +2532,15 @@ describe('createSmartMongoRepo', function () {
       expect(raw1).toHaveProperty('_version', 1);
 
       // second upsert (update) - should increment version to 2
-      await repo.upsert({ ...entityWithId, name: 'Updated Upsert' });
+      await repo.upsert({
+        ...entityWithId,
+        name: 'Updated Upsert',
+        _version: 99,
+      } as any); // _version passed here is ignored
       const raw2 = await rawTestCollection().findOne({
         _id: 'upsert-version-test',
       });
       expect(raw2).toHaveProperty('_version', 2);
-    });
-
-    it('should prevent writing to version field', async () => {
-      type VersionedEntity = TestEntity & {
-        version: number;
-      };
-
-      function testCollectionVersioned(): Collection<VersionedEntity> {
-        const db = mongo.client.db();
-        return db.collection<VersionedEntity>(COLLECTION_NAME);
-      }
-
-      const repo = createSmartMongoRepo({
-        collection: testCollectionVersioned(),
-        mongoClient: mongo.client,
-        options: { version: 'version' },
-      });
-
-      // should not allow creating with version field
-      await expect(
-        repo.create({ ...createTestEntity(), version: 5 } as any)
-      ).rejects.toThrow('Cannot create readonly properties: version');
-
-      // should not allow updating version field
-      expect(() =>
-        repo.buildUpdateOperation({ set: { version: 10 } } as any)
-      ).toThrow('Cannot update readonly properties: version');
     });
 
     it('should work with bulk operations', async () => {

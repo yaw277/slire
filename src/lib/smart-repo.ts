@@ -515,14 +515,20 @@ export function createSmartMongoRepo<
     return { id: mongoId, ...filteredRest } as Projected<T, P>;
   }
 
-  // helper to map entity to Mongo doc, omitting all undefined properties (system fields auto-managed)
+  // helper to map entity to Mongo doc, omitting all undefined properties and system fields (system fields auto-managed)
   function toMongoDoc(
     entity: T & { id?: string },
     op: 'create' | 'update' | 'upsert' | 'delete' | 'unset'
   ): any {
     const { id, _id, ...entityData } = entity;
     validateScopeProperties(entityData, op);
-    const filtered = deepFilterUndefined(entityData);
+
+    // Strip all system-managed fields to prevent external manipulation
+    const strippedEntityData = Object.fromEntries(
+      Object.entries(entityData).filter(([key]) => !READONLY_KEYS.has(key))
+    );
+
+    const filtered = deepFilterUndefined(strippedEntityData);
 
     // For create operations, always generate new ID regardless of input
     // For upsert operations, use provided ID (required by type system)
