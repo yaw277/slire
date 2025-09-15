@@ -1746,10 +1746,10 @@ describe('createSmartMongoRepo', function () {
 
       // Function that only accepts approved specs
       async function findByApprovedSpec<T extends { id: string }>(
-        repo: SmartRepo<T, {}, any>,
+        repository: SmartRepo<T, {}, 'id', Omit<T, 'id'> & { id?: string }>,
         spec: ApprovedSpecification<T>
       ): Promise<T[]> {
-        return repo.findBySpec(spec);
+        return repository.findBySpec(spec);
       }
 
       // Test approved specifications work

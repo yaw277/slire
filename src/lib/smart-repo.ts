@@ -77,13 +77,6 @@ export type ManagedFields<T, Config extends RepositoryConfig<T>> =
       ? Extract<Config['version'], keyof T>
       : never);
 
-// // Input entity type - makes only actually configured managed fields optional
-// type InputEntity<
-//   T extends { id?: string },
-//   Config extends RepositoryConfig<T> = RepositoryConfig<T>
-// > = Omit<T, ManagedFields<T, Config> | 'id'> &
-//   Partial<Pick<T, ManagedFields<T, Config>>> & { id?: string };
-
 const SOFT_DELETE_KEY = '_deleted';
 const DEFAULT_VERSION_KEY = '_version';
 const DEFAULT_CREATED_AT_KEY = '_createdAt';
@@ -799,7 +792,8 @@ export function createSmartMongoRepo<
         collection,
         mongoClient,
         scope,
-        options: { ...options, session: clientSession },
+        options: { ...options },
+        session: clientSession,
       });
     },
 
@@ -811,15 +805,8 @@ export function createSmartMongoRepo<
     ): Promise<R> => {
       return mongoClient.withSession(async (clientSession) => {
         return clientSession.withTransaction(async () => {
-          const txRepo = createSmartMongoRepo({
-            collection,
-            mongoClient,
-            scope,
-            options: { ...options, session: clientSession },
-          });
-          return operation(
-            txRepo as SmartRepo<T, Config, Managed, InputEntity>
-          );
+          const txRepo = repo.withSession(clientSession);
+          return operation(txRepo);
         });
       });
     },

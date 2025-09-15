@@ -5,12 +5,6 @@ type Prettify<T> = {
   [K in keyof T]: T[K];
 } & {};
 
-type DeepPrettify<T> = T extends (...args: any[]) => any
-  ? T
-  : T extends object
-  ? { [K in keyof T]: DeepPrettify<T[K]> }
-  : T;
-
 type Entity = {
   id: string;
   name: string;
