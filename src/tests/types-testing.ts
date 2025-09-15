@@ -1,4 +1,9 @@
-import { ManagedFields, RepositoryConfig } from '@chd/smart-repo';
+import {
+  ManagedFields,
+  OptionalKeys,
+  RepositoryConfig,
+  UpdateOperation,
+} from '@chd/smart-repo';
 import { Collection } from 'mongodb';
 
 type Prettify<T> = {
@@ -7,6 +12,8 @@ type Prettify<T> = {
 
 type Entity = {
   id: string;
+  tenant: string;
+  department: string;
   name: string;
   age: number;
   active: boolean;
@@ -15,33 +22,91 @@ type Entity = {
   _v: number;
   _version: number;
   _deleted: boolean;
+  optional?: string;
+  comment: string | undefined;
+};
+
+type X = {
+  id: string;
+  organizationId: string;
+  name: string;
+  email: string;
+  age: number;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  version: number;
+  metadata?: {
+    tags: string[];
+    notes?: string;
+  };
 };
 
 function test<
   T extends { id: string },
+  S extends Partial<T>,
   C extends RepositoryConfig<T>,
-  M extends ManagedFields<T, C>,
-  InputEntity extends Omit<T, M> & Partial<Pick<T, M>>
->(_collection: Collection<T>, _config: C) {
+  M extends ManagedFields<T, C, S>,
+  UpdateEntity extends Omit<T, M>,
+  UnsetKeys extends OptionalKeys<UpdateEntity>,
+  CreateEntity extends Omit<T, M> & Partial<Pick<T, M>>
+>(_collection: Collection<T>, scope: S, _config: C) {
+  console.log(scope);
   return {
-    foo: (field: M) => console.log(field),
-    set: (entity: Prettify<InputEntity>) => console.log(entity),
+    managed: (...fields: M[]) => console.log(fields),
+    create: (entity: Prettify<CreateEntity>) => console.log(entity),
+    update: (data: Prettify<Partial<UpdateEntity>>) => console.log(data),
+    unset: (...keys: Prettify<UnsetKeys>[]) => console.log(keys),
+    setUnset: (op: Prettify<UpdateOperation<UpdateEntity>>) => console.log(op),
   };
 }
 
-const { foo, set } = test({} as Collection<Entity>, {
-  softDelete: true,
-  timestampKeys: { updatedAt: 'updatedAt' },
-  version: '_v',
-});
+const x = test(
+  {} as Collection<X>,
+  { organizationId: 'foo' },
+  {
+    softDelete: true,
+    timestampKeys: { createdAt: 'createdAt', updatedAt: 'updatedAt' },
+    version: 'version',
+  }
+);
 
-foo('_v');
+x.managed('id', 'version', 'createdAt', 'updatedAt');
+x.unset('metadata');
+x.setUnset({ unset: ['metadata'] });
 
-set({
+const entity = test(
+  {} as Collection<Entity>,
+  { tenant: 'foo', department: 'bar' },
+  {
+    softDelete: true,
+    timestampKeys: { updatedAt: 'updatedAt' },
+    version: '_v',
+  }
+);
+
+entity.managed('department', '_v');
+
+entity.create({
   // id: 'foo',
+  // tenant: 'adf',
+  // department: 'sdf',
   name: 'bar',
   age: 22,
   active: true,
   // _v: 3,
   _version: 3,
+  comment: undefined,
+});
+
+entity.update({
+  comment: 'foo',
+  // department: 'bar',
+});
+
+entity.unset('comment', 'optional');
+
+entity.setUnset({
+  set: { name: 'foo' },
+  unset: ['comment', 'comment', 'optional'],
 });

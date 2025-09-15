@@ -551,6 +551,7 @@ describe('createSmartMongoRepo', function () {
         collection: testCollection(),
         mongoClient: mongo.client,
       });
+
       const entity = createTestEntity({
         name: 'Test Entity',
         metadata: { tags: ['tag1'], notes: 'Test notes' },
@@ -558,7 +559,7 @@ describe('createSmartMongoRepo', function () {
 
       const createdId = await repo.create(entity);
 
-      await repo.update(createdId, { unset: ['metadata'] });
+      await repo.update(createdId, { set: { age: 8 }, unset: ['metadata'] });
 
       const updated = await repo.getById(createdId);
 

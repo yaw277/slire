@@ -33,7 +33,7 @@ type TimestampConfig<T> = {
 };
 
 // utility type to extract keys of properties that can be undefined
-type OptionalKeys<T> = {
+export type OptionalKeys<T> = {
   [K in keyof T]: undefined extends T[K] ? K : never;
 }[keyof T];
 
@@ -42,7 +42,7 @@ type NumberKeys<T> = {
   [K in keyof T]: T[K] extends number ? K : never;
 }[keyof T];
 
-type UpdateOperation<T> =
+export type UpdateOperation<T> =
   | { set: Partial<T>; unset?: never }
   | { set?: never; unset: OptionalKeys<T>[] }
   | { set: Partial<T>; unset: OptionalKeys<T>[] };
@@ -55,9 +55,14 @@ export type RepositoryConfig<T> = {
   version?: true | NumberKeys<T>;
 };
 
-// Repo-managed fields part of T (based on repository configuration).
-export type ManagedFields<T, Config extends RepositoryConfig<T>> =
+// Repo-managed fields part of T (based on repo config and scope).
+export type ManagedFields<
+  T,
+  Config extends RepositoryConfig<T>,
+  Scope extends Partial<T>
+> =
   | 'id'
+  | Extract<keyof Scope, keyof T>
   | (Config['softDelete'] extends true
       ? Extract<typeof SOFT_DELETE_KEY, keyof T>
       : never)
@@ -92,13 +97,18 @@ const DEFAULT_DELETED_AT_KEY = '_deletedAt';
 // Prettified to show expanded type in IDE tooltips instead of complex intersection
 type MongoRepo<
   T extends { id: string },
+  Scope extends Partial<T> = {},
   Config extends RepositoryConfig<T> = {},
-  Managed extends ManagedFields<T, Config> = ManagedFields<T, Config>,
+  Managed extends ManagedFields<T, Config, Scope> = ManagedFields<
+    T,
+    Config,
+    Scope
+  >,
   UpdateInput extends Record<string, unknown> = Omit<T, Managed>,
   CreateInput extends Record<string, unknown> = UpdateInput &
     Partial<Pick<T, Managed>>
 > = Prettify<
-  SmartRepo<T, Config, Managed, UpdateInput, CreateInput> & {
+  SmartRepo<T, Scope, Config, Managed, UpdateInput, CreateInput> & {
     collection: Collection<T & { _id: string }>;
     applyConstraints: (
       input: any,
@@ -107,10 +117,10 @@ type MongoRepo<
     buildUpdateOperation: (update: UpdateOperation<UpdateInput>) => any;
     withSession(
       session: ClientSession
-    ): MongoRepo<T, Config, Managed, UpdateInput, CreateInput>;
+    ): MongoRepo<T, Scope, Config, Managed, UpdateInput, CreateInput>;
     runTransaction<R>(
       operation: (
-        txRepo: SmartRepo<T, Config, Managed, UpdateInput, CreateInput>
+        txRepo: SmartRepo<T, Scope, Config, Managed, UpdateInput, CreateInput>
       ) => Promise<R>
     ): Promise<R>;
   }
@@ -119,8 +129,13 @@ type MongoRepo<
 // database-agnostic interface (limited to simple CRUD operations)
 export type SmartRepo<
   T extends { id: string },
+  Scope extends Partial<T> = {},
   Config extends RepositoryConfig<T> = {},
-  Managed extends ManagedFields<T, Config> = ManagedFields<T, Config>,
+  Managed extends ManagedFields<T, Config, Scope> = ManagedFields<
+    T,
+    Config,
+    Scope
+  >,
   UpdateInput extends Record<string, unknown> = Omit<T, Managed>,
   CreateInput extends Record<string, unknown> = UpdateInput &
     Partial<Pick<T, Managed>>
@@ -222,24 +237,29 @@ export function combineSpecs<T>(
  */
 export function createSmartMongoRepo<
   T extends { id: string },
+  Scope extends Partial<T>,
   Config extends RepositoryConfig<T> = {},
-  Managed extends ManagedFields<T, Config> = ManagedFields<T, Config>,
+  Managed extends ManagedFields<T, Config, Scope> = ManagedFields<
+    T,
+    Config,
+    Scope
+  >,
   UpdateInput extends Record<string, unknown> = Omit<T, Managed>,
   CreateInput extends Record<string, unknown> = UpdateInput &
     Partial<Pick<T, Managed>>
 >({
   collection,
   mongoClient,
-  scope = {},
+  scope = {} as Scope,
   options,
   session,
 }: {
   collection: Collection<T>;
   mongoClient: MongoClient;
-  scope?: Partial<T>;
+  scope?: Scope;
   options?: Config;
   session?: ClientSession;
-}): MongoRepo<T, Config, Managed, UpdateInput, CreateInput> {
+}): MongoRepo<T, Scope, Config, Managed, UpdateInput, CreateInput> {
   const configuredKeys: string[] = [];
   const generateIdFn = options?.generateId ?? uuidv4;
   const softDeleteEnabled = options?.softDelete === true;
@@ -558,7 +578,7 @@ export function createSmartMongoRepo<
     return session ? { ...mongoOptions, session } : mongoOptions;
   }
 
-  const repo: MongoRepo<T, Config, Managed, UpdateInput, CreateInput> = {
+  const repo: MongoRepo<T, Scope, Config, Managed, UpdateInput, CreateInput> = {
     getById: async <P extends Projection<T>>(
       id: string,
       projection?: P
@@ -791,7 +811,7 @@ export function createSmartMongoRepo<
     // Convenience method for running multiple repo functions in a transaction
     runTransaction: async <R>(
       operation: (
-        txRepo: SmartRepo<T, Config, Managed, UpdateInput, CreateInput>
+        txRepo: SmartRepo<T, Scope, Config, Managed, UpdateInput, CreateInput>
       ) => Promise<R>
     ): Promise<R> => {
       return mongoClient.withSession(async (clientSession) => {
