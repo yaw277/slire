@@ -44,12 +44,13 @@ type X = {
 
 function test<
   T extends { id: string },
-  S extends Partial<T>,
-  C extends RepositoryConfig<T>,
-  M extends ManagedFields<T, C, S>,
-  UpdateEntity extends Omit<T, M>,
-  UnsetKeys extends OptionalKeys<UpdateEntity>,
-  CreateEntity extends Omit<T, M> & Partial<Pick<T, M>>
+  S extends Partial<T> = {},
+  C extends RepositoryConfig<T> = {},
+  M extends ManagedFields<T, C, S> = ManagedFields<T, C, S>,
+  UpdateEntity extends Record<string, unknown> = Omit<T, M>,
+  UnsetKeys extends OptionalKeys<UpdateEntity> = OptionalKeys<UpdateEntity>,
+  CreateEntity extends Record<string, unknown> = Omit<T, M> &
+    Partial<Pick<T, M>>
 >(_collection: Collection<T>, scope: S, _config: C) {
   console.log(scope);
   return {

@@ -237,7 +237,7 @@ export function combineSpecs<T>(
  */
 export function createSmartMongoRepo<
   T extends { id: string },
-  Scope extends Partial<T>,
+  Scope extends Partial<T> = {},
   Config extends RepositoryConfig<T> = {},
   Managed extends ManagedFields<T, Config, Scope> = ManagedFields<
     T,

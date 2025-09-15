@@ -559,7 +559,7 @@ describe('createSmartMongoRepo', function () {
 
       const createdId = await repo.create(entity);
 
-      await repo.update(createdId, { set: { age: 8 }, unset: ['metadata'] });
+      await repo.update(createdId, { unset: ['metadata'] });
 
       const updated = await repo.getById(createdId);
 
@@ -732,7 +732,7 @@ describe('createSmartMongoRepo', function () {
 
       await expect(
         repo.update(id, {
-          set: { organizationId: 'foo', name: 'Updated Name' },
+          set: { organizationId: 'foo', name: 'Updated Name' } as any,
         })
       ).rejects.toThrow('Cannot update readonly properties: organizationId');
 
@@ -1853,7 +1853,7 @@ describe('createSmartMongoRepo', function () {
 
       // Function that only accepts approved specs
       async function findByApprovedSpec<T extends { id: string }>(
-        repository: SmartRepo<T, {}, 'id', Omit<T, 'id'> & { id?: string }>,
+        repository: SmartRepo<T>,
         spec: ApprovedSpecification<T>
       ): Promise<T[]> {
         return repository.findBySpec(spec);
