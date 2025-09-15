@@ -99,12 +99,12 @@ type MongoRepo<
     Partial<Pick<T, Managed>>
 > = Prettify<
   SmartRepo<T, Config, Managed, UpdateInput, CreateInput> & {
-    collection: Collection<any>;
+    collection: Collection<T & { _id: string }>;
     applyConstraints: (
       input: any,
       options?: { includeSoftDeleted?: boolean }
     ) => any;
-    buildUpdateOperation: (update: UpdateOperation<any>) => any;
+    buildUpdateOperation: (update: UpdateOperation<UpdateInput>) => any;
     withSession(
       session: ClientSession
     ): MongoRepo<T, Config, Managed, UpdateInput, CreateInput>;
@@ -769,15 +769,13 @@ export function createSmartMongoRepo<
     // in such situations.
 
     // Repo collection reference
-    collection: collection,
+    collection: collection as unknown as Collection<T & { _id: string }>,
 
     // Adds scope filter and soft-delete filter (if configured), with option to include soft-deleted
     applyConstraints: applyConstraints,
 
     // Applies enrichments (such as timestamps) and enforces constraints (writing readonly props not allowed)
-    buildUpdateOperation: buildUpdateOperation as (
-      update: UpdateOperation<any>
-    ) => any,
+    buildUpdateOperation: buildUpdateOperation,
 
     // Factory method for session-aware repository
     withSession: (clientSession: ClientSession) => {

@@ -2635,7 +2635,7 @@ describe('createSmartMongoRepo', function () {
       expect(updated3).toMatchObject({ name: 'Updated3', _updatedAt: t });
     });
 
-    it('buildUpdateOperation prevents writing read-only props', async () => {
+    it('buildUpdateOperation prevents writing read-only props (runtime)', async () => {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
@@ -2651,7 +2651,7 @@ describe('createSmartMongoRepo', function () {
             organizationId: 'bar',
             _createdAt: new Date(),
           },
-        })
+        } as any)
       ).toThrow(
         'Cannot update readonly properties: _id, _createdAt, organizationId'
       );
