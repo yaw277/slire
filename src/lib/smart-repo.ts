@@ -202,7 +202,7 @@ export function combineSpecs<T>(
  * @template T The entity type (must have id: string)
  * @template Config Repository configuration options (inferred from options parameter)
  *
- * Advanced generics (Managed, InputEntity) are computed automatically - you typically don't need to specify them.
+ * Advanced generics (Managed, UpdateInput, CreateInput) are computed automatically - you typically don't need to specify them.
  *
  * @example
  * ```typescript

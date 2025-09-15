@@ -252,11 +252,51 @@ This approach emerged organically from observing teams repeatedly writing the sa
 The operations listed here resemble the full set of DB-agnostic functions in a SmartRepo. At time of writing only the MongoDB implementation existed. So some descriptions might mention some characteristics specific to MongoDB. However, the interface is designed to
 be as simple as possible to allow being implemented for other DBs, particularly Firestore.
 
-**Note 1**: In the function signatures below, `T` represents the entity type.
+**Note 1**: In the function signatures below, `T` represents the entity type, `UpdateInput` represents the subset of `T` that can be modified via updates (excluding managed fields), and `CreateInput` represents the input shape for creating entities (includes optional managed fields).
 
 **Note 2**: All read functions support projections. A projection is given in the form `{ propA: true, propB: true }` where `propA` and `propB` are valid properties in `T`. A projection is properly reflected in the return type.
 
 **Note 3**: Scope filtering and other consistence features are not part of this interface as they are basically repository options that get only mentioned during instantiation. However, they might be mentioned in the function descriptions describing the intended behavior as part of the interface contract any implemention must adhere to.
+
+#### Input Type Distinction
+
+SmartRepo uses distinct input types for different operations to provide compile-time safety:
+
+- **`UpdateInput`**: Used for update operations - excludes all system-managed fields (timestamps, version, id, soft-delete markers). This prevents accidental modification of fields that should be automatically managed.
+- **`CreateInput`**: Used for create/upsert operations - includes all `UpdateInput` fields plus optional system-managed fields. The managed fields are allowed purely as a convenience feature so you don't have to manually strip them from objects, but they are ignored internally. The repository always auto-generates its own managed fields.
+
+The relationship: `CreateInput = UpdateInput & Partial<ManagedFields>`. This design ensures updates are strict while creation accepts but ignores managed fields for developer convenience.
+
+**Example:**
+
+```typescript
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  _createdAt?: Date;
+  _updatedAt?: Date;
+};
+
+// With timestamps enabled:
+// UpdateInput = { name: string; email: string }
+// CreateInput = { name: string; email: string; id?: string; _createdAt?: Date; _updatedAt?: Date }
+
+// ✅ Valid update - only user data
+await repo.update(id, { set: { name: 'John' } });
+
+// ❌ Compile error - can't update managed fields
+await repo.update(id, { set: { _createdAt: new Date() } });
+
+// ✅ Valid create - managed fields optional but ignored if provided
+await repo.create({ name: 'John', email: 'john@example.com' });
+await repo.create({
+  id: 'will-be-ignored',
+  name: 'John',
+  email: 'john@example.com',
+  _createdAt: new Date(), // also ignored - repo generates its own
+});
+```
 
 ### getById
 
@@ -276,37 +316,37 @@ Bulk version of `getById` that retrieves multiple entities by their IDs. Returns
 
 ### create
 
-`create(entity: T): Promise<string>`
+`create(entity: CreateInput): Promise<string>`
 
-Creates a new entity in the repository. Returns the generated ID for the created entity. The repository automatically generates a unique ID. Scope fields are automatically applied during creation, and any configured timestamps (like `createdAt`) or versioning fields are added. Ignores `id` system-managed fields (timestamps, version) if passed. Accepts scope properties if they match the repository's configured scope values.
+Creates a new entity in the repository. Returns the generated ID for the created entity. The repository automatically generates a unique ID and all system-managed fields (timestamps, version). While `CreateInput` allows managed fields to be present in the input for convenience, they are stripped internally and the repository generates its own values. Scope fields are automatically applied during creation. Accepts scope properties if they match the repository's configured scope values. Fails for scope properties that don't match the repository's scope.
 
 ### createMany
 
-`createMany(entities: T[]): Promise<string[]>`
+`createMany(entities: CreateInput[]): Promise<string[]>`
 
 Bulk version of `create` that creates multiple entities in a single operation. Returns an array of generated IDs corresponding to the created entities. The order of returned IDs matches the order of input entities. All entities are subject to the same automatic ID generation, scope validation, and consistency feature handling as the single `create` function.
 
 ### update
 
-`update(id: string, update: UpdateOperation<Entity>, options?: { includeSoftDeleted?: boolean }): Promise<void>`
+`update(id: string, update: UpdateOperation<UpdateInput>, options?: { includeSoftDeleted?: boolean }): Promise<void>`
 
-Updates a single entity identified by its ID. The update operation supports both `set` (to update fields) and `unset` (to remove optional fields) operations, which can be used individually or combined. The repository automatically applies scope filtering and excludes soft-deleted entities by default to ensure only active entities within the current scope can be updated. Use the `includeSoftDeleted: true` option to allow updating soft-deleted entities. Note that scope properties and system-managed fields (timestamps, version, id) cannot be modified through updates - the `UpdateOperation<Entity>` type excludes these fields, and attempting to update them will result in a runtime error. Any configured timestamps (like `updatedAt`) or versioning increments are applied automatically. No error is thrown if the entity doesn't exist or doesn't match the scope.
+Updates a single entity identified by its ID. The update operation supports both `set` (to update fields) and `unset` (to remove optional fields) operations, which can be used individually or combined. The repository automatically applies scope filtering and excludes soft-deleted entities by default to ensure only active entities within the current scope can be updated. Use the `includeSoftDeleted: true` option to allow updating soft-deleted entities. Note that scope properties and system-managed fields (timestamps, version, id) cannot be modified through updates - the `UpdateOperation<UpdateInput>` type excludes these fields, ensuring type safety at compile time. Implementations should also perform runtime checks to ensure that managed fields are not tampered with. Any configured timestamps (like `updatedAt`) or versioning increments are applied automatically. No error is thrown if the entity doesn't exist or doesn't match the scope.
 
 ### updateMany
 
-`updateMany(ids: string[], update: UpdateOperation<Entity>, options?: { includeSoftDeleted?: boolean }): Promise<void>`
+`updateMany(ids: string[], update: UpdateOperation<UpdateInput>, options?: { includeSoftDeleted?: boolean }): Promise<void>`
 
 Bulk version of `update` that applies the same update operation to multiple entities identified by their IDs. All entities are subject to the same scope filtering (including soft-delete exclusion by default) and can accept the same `includeSoftDeleted` option. Like the single `update` function, scope properties cannot be modified through bulk updates. Timestamp updates and versioning behavior are identical to the single `update` function. The operation succeeds even if some of the provided IDs don't exist or don't match the scope - only the valid, in-scope entities will be updated.
 
 ### upsert
 
-`upsert(entity: Entity & { id: string }, options?: { includeSoftDeleted?: boolean }): Promise<void>`
+`upsert(entity: CreateInput, options?: { includeSoftDeleted?: boolean }): Promise<void>`
 
 Inserts a new entity if it doesn't exist, or updates an existing entity if it does exist, based on the provided ID. Unlike `create`, the entity must include an `id` field. The repository applies scope filtering and excludes soft-deleted entities by default during both the existence check and the actual operation. Use the `includeSoftDeleted: true` option to target soft-deleted entities for updates. Like `create`, scope properties can be included in the entity and will be validated to ensure they match the repository's configured scope values. For inserts, automatic timestamps (like `createdAt`) and initial versioning are applied. For updates, only update-related timestamps (like `updatedAt`) and version increments are applied. If an entity exists but is out of scope (or is soft-deleted without the option), it will be treated as non-existent and a new entity will be attempted to be created, which may fail due to unique constraints. Note that when the repository is configured with a custom ID generator, the user is responsible for providing correct IDs that conform to the generator's format.
 
 ### upsertMany
 
-`upsertMany(entities: (Entity & { id: string })[], options?: { includeSoftDeleted?: boolean }): Promise<void>`
+`upsertMany(entities: CreateInput[], options?: { includeSoftDeleted?: boolean }): Promise<void>`
 
 Bulk version of `upsert` that performs insert-or-update operations on multiple entities in a single call. Each entity is processed independently with the same logic and options support as the single `upsert` function, including the same soft-delete filtering behavior, `includeSoftDeleted` option, and scope property validation. This provides better performance than multiple individual upsert calls while maintaining the same consistency guarantees and scope filtering behavior.
 
@@ -450,9 +490,9 @@ Helper method that applies the repository's scope filtering to a given filter ob
 
 ### buildUpdateOperation
 
-`buildUpdateOperation(update: UpdateOperation<any>): any`
+`buildUpdateOperation(update: UpdateOperation<UpdateInput>): any`
 
-Helper method that transforms a repository update operation into a MongoDB-compliant update document with all configured consistency features applied. Takes an `UpdateOperation` with `set` and/or `unset` fields and automatically adds timestamps (like `updatedAt`), version increments, and any other configured repository features. This ensures that direct collection operations maintain the same consistency behavior as the repository's built-in update methods. Essential when performing direct `updateOne`, `updateMany`, or `bulkWrite` operations on the collection.
+Helper method that transforms a repository update operation into a MongoDB-compliant update document with all configured consistency features applied. Takes an `UpdateOperation<UpdateInput>` with `set` and/or `unset` fields and automatically adds timestamps (like `updatedAt`), version increments, and any other configured repository features. Modification of system-managed fields is both prevented at compile time (type-level) and at runtime. This ensures that direct collection operations maintain the same consistency behavior as the repository's built-in update methods. Essential when performing direct `updateOne`, `updateMany`, or `bulkWrite` operations on the collection.
 
 ## Recommended Usage Patterns
 
