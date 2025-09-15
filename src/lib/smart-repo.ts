@@ -94,10 +94,11 @@ type MongoRepo<
   T extends { id: string },
   Config extends RepositoryConfig<T> = {},
   Managed extends ManagedFields<T, Config> = ManagedFields<T, Config>,
-  InputEntity extends Record<string, unknown> = Omit<T, Managed> &
+  UpdateInput extends Record<string, unknown> = Omit<T, Managed>,
+  CreateInput extends Record<string, unknown> = UpdateInput &
     Partial<Pick<T, Managed>>
 > = Prettify<
-  SmartRepo<T, Config, Managed, InputEntity> & {
+  SmartRepo<T, Config, Managed, UpdateInput, CreateInput> & {
     collection: Collection<any>;
     applyConstraints: (
       input: any,
@@ -106,10 +107,10 @@ type MongoRepo<
     buildUpdateOperation: (update: UpdateOperation<any>) => any;
     withSession(
       session: ClientSession
-    ): MongoRepo<T, Config, Managed, InputEntity>;
+    ): MongoRepo<T, Config, Managed, UpdateInput, CreateInput>;
     runTransaction<R>(
       operation: (
-        txRepo: SmartRepo<T, Config, Managed, InputEntity>
+        txRepo: SmartRepo<T, Config, Managed, UpdateInput, CreateInput>
       ) => Promise<R>
     ): Promise<R>;
   }
@@ -120,7 +121,8 @@ export type SmartRepo<
   T extends { id: string },
   Config extends RepositoryConfig<T> = {},
   Managed extends ManagedFields<T, Config> = ManagedFields<T, Config>,
-  InputEntity extends Record<string, unknown> = Omit<T, Managed> &
+  UpdateInput extends Record<string, unknown> = Omit<T, Managed>,
+  CreateInput extends Record<string, unknown> = UpdateInput &
     Partial<Pick<T, Managed>>
 > = {
   getById(id: string): Promise<T | null>;
@@ -134,26 +136,26 @@ export type SmartRepo<
     projection: P
   ): Promise<[Projected<T, P>[], string[]]>;
 
-  create(entity: Prettify<InputEntity>): Promise<string>;
-  createMany(entities: Prettify<InputEntity>[]): Promise<string[]>;
+  create(entity: Prettify<CreateInput>): Promise<string>;
+  createMany(entities: Prettify<CreateInput>[]): Promise<string[]>;
 
   update(
     id: string,
-    update: UpdateOperation<Prettify<InputEntity>>,
+    update: UpdateOperation<Prettify<UpdateInput>>,
     options?: { includeSoftDeleted?: boolean }
   ): Promise<void>;
   updateMany(
     ids: string[],
-    update: UpdateOperation<Prettify<InputEntity>>,
+    update: UpdateOperation<Prettify<UpdateInput>>,
     options?: { includeSoftDeleted?: boolean }
   ): Promise<void>;
 
   upsert(
-    entity: Prettify<InputEntity>,
+    entity: Prettify<CreateInput>,
     options?: { includeSoftDeleted?: boolean }
   ): Promise<void>;
   upsertMany(
-    entities: Prettify<InputEntity>[],
+    entities: Prettify<CreateInput>[],
     options?: { includeSoftDeleted?: boolean }
   ): Promise<void>;
 
@@ -222,7 +224,8 @@ export function createSmartMongoRepo<
   T extends { id: string },
   Config extends RepositoryConfig<T> = {},
   Managed extends ManagedFields<T, Config> = ManagedFields<T, Config>,
-  InputEntity extends Record<string, unknown> = Omit<T, Managed> &
+  UpdateInput extends Record<string, unknown> = Omit<T, Managed>,
+  CreateInput extends Record<string, unknown> = UpdateInput &
     Partial<Pick<T, Managed>>
 >({
   collection,
@@ -236,7 +239,7 @@ export function createSmartMongoRepo<
   scope?: Partial<T>;
   options?: Config;
   session?: ClientSession;
-}): MongoRepo<T, Config, Managed, InputEntity> {
+}): MongoRepo<T, Config, Managed, UpdateInput, CreateInput> {
   const configuredKeys: string[] = [];
   const generateIdFn = options?.generateId ?? uuidv4;
   const softDeleteEnabled = options?.softDelete === true;
@@ -495,12 +498,9 @@ export function createSmartMongoRepo<
   }
 
   // helper to map entity to Mongo doc, omitting all undefined properties and system fields (system fields auto-managed)
-  function toMongoDoc(
-    entity: InputEntity,
-    op: 'create' | 'update' | 'upsert' | 'delete' | 'unset'
-  ): any {
+  function toMongoDoc(entity: CreateInput, op: 'create' | 'upsert'): any {
     const { id, ...entityData } = entity;
-    // Remove _id if it exists (it won't on InputEntity types, but might be present in some edge cases)
+    // Remove _id if it exists (shouldn't but might be present in some edge cases)
     const { _id, ...cleanEntityData } = entityData as any;
     validateScopeProperties(cleanEntityData, op);
 
@@ -520,8 +520,7 @@ export function createSmartMongoRepo<
   }
 
   // helper to build MongoDB update operation from set/unset
-  // TODO - typing - why not InputEntity?
-  function buildUpdateOperation<U>(update: UpdateOperation<U>): any {
+  function buildUpdateOperation(update: UpdateOperation<UpdateInput>): any {
     const { set, unset } = update;
     const mongoUpdate: any = {}; // cast to any due to MongoDB's complex UpdateFilter type system
 
@@ -559,7 +558,7 @@ export function createSmartMongoRepo<
     return session ? { ...mongoOptions, session } : mongoOptions;
   }
 
-  const repo: MongoRepo<T, Config, Managed, InputEntity> = {
+  const repo: MongoRepo<T, Config, Managed, UpdateInput, CreateInput> = {
     getById: async <P extends Projection<T>>(
       id: string,
       projection?: P
@@ -597,12 +596,12 @@ export function createSmartMongoRepo<
       return [foundDocs, notFoundIds];
     },
 
-    create: async (entity: InputEntity): Promise<string> => {
+    create: async (entity: CreateInput): Promise<string> => {
       const ids = await repo.createMany([entity]);
       return ids[0];
     },
 
-    createMany: async (entities: InputEntity[]): Promise<string[]> => {
+    createMany: async (entities: CreateInput[]): Promise<string[]> => {
       if (entities.length < 1) {
         return [];
       }
@@ -632,7 +631,7 @@ export function createSmartMongoRepo<
 
     update: async (
       id: string,
-      update: UpdateOperation<InputEntity>,
+      update: UpdateOperation<UpdateInput>,
       options?: { includeSoftDeleted?: boolean }
     ): Promise<void> => {
       await repo.updateMany([id], update as any, options);
@@ -640,7 +639,7 @@ export function createSmartMongoRepo<
 
     updateMany: async (
       ids: string[],
-      update: UpdateOperation<InputEntity>,
+      update: UpdateOperation<UpdateInput>,
       options?: { includeSoftDeleted?: boolean }
     ): Promise<void> => {
       if (ids.length < 1) {
@@ -661,14 +660,14 @@ export function createSmartMongoRepo<
     },
 
     upsert: async (
-      entity: InputEntity,
+      entity: CreateInput,
       options?: { includeSoftDeleted?: boolean }
     ): Promise<void> => {
       await repo.upsertMany([entity], options);
     },
 
     upsertMany: async (
-      entities: InputEntity[],
+      entities: CreateInput[],
       options?: { includeSoftDeleted?: boolean }
     ): Promise<void> => {
       if (entities.length < 1) {
@@ -794,7 +793,7 @@ export function createSmartMongoRepo<
     // Convenience method for running multiple repo functions in a transaction
     runTransaction: async <R>(
       operation: (
-        txRepo: SmartRepo<T, Config, Managed, InputEntity>
+        txRepo: SmartRepo<T, Config, Managed, UpdateInput, CreateInput>
       ) => Promise<R>
     ): Promise<R> => {
       return mongoClient.withSession(async (clientSession) => {
