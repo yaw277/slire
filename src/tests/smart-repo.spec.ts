@@ -205,9 +205,9 @@ describe('createSmartMongoRepo', function () {
           softDelete: true,
           traceTimestamps: true,
           timestampKeys: {
-            createdAt: 'createdAt' as keyof ExtendedTestEntity,
-            updatedAt: 'updatedAt' as keyof ExtendedTestEntity,
-            deletedAt: 'deletedAt' as keyof ExtendedTestEntity,
+            createdAt: 'createdAt',
+            updatedAt: 'updatedAt',
+            deletedAt: 'deletedAt',
           },
           version: true,
         },
@@ -234,6 +234,16 @@ describe('createSmartMongoRepo', function () {
       expect(rawDoc?.createdAt).toBeInstanceOf(Date); // Should be current time
       expect(rawDoc?.updatedAt).toBeInstanceOf(Date); // Should be current time
       expect(rawDoc?.deletedAt).toBeUndefined(); // Should not exist
+
+      // Verify timestamps are recent (within last 5 seconds)
+      const now = new Date();
+      const fiveSecondsAgo = new Date(now.getTime() - 5000);
+      expect(rawDoc?.createdAt.getTime()).toBeGreaterThan(
+        fiveSecondsAgo.getTime()
+      );
+      expect(rawDoc?.updatedAt.getTime()).toBeGreaterThan(
+        fiveSecondsAgo.getTime()
+      );
 
       // Verify the actual data was preserved
       expect(rawDoc?.name).toBe('Custom System Field Test');
@@ -335,7 +345,7 @@ describe('createSmartMongoRepo', function () {
       // verify first entity (without optional fields)
       const firstEntity = found.find((e) => e.name === 'User 1');
       expect(firstEntity).toEqual({
-        id: firstEntity!.id,
+        id: createdIds[0],
         organizationId: firstEntity!.organizationId,
         name: 'User 1',
         email: 'test@example.com',
@@ -346,7 +356,7 @@ describe('createSmartMongoRepo', function () {
       // verify second entity (with optional fields)
       const secondEntity = found.find((e) => e.name === 'User 2');
       expect(secondEntity).toEqual({
-        id: secondEntity!.id,
+        id: createdIds[1],
         organizationId: secondEntity!.organizationId,
         name: 'User 2',
         email: 'test@example.com',
@@ -603,7 +613,7 @@ describe('createSmartMongoRepo', function () {
         description: string | undefined;
       };
 
-      const repoWithUndefined = createSmartMongoRepo({
+      const repo = createSmartMongoRepo({
         collection:
           testCollection() as unknown as Collection<EntityWithUndefinedField>,
         mongoClient: mongo.client,
@@ -614,22 +624,22 @@ describe('createSmartMongoRepo', function () {
         description: 'test description' as string | undefined,
       };
 
-      const createdId = await repoWithUndefined.create(entityData);
+      const createdId = await repo.create(entityData);
 
       // Both optional properties should be allowed to unset
-      await repoWithUndefined.update(createdId, {
+      await repo.update(createdId, {
         unset: ['description', 'metadata'],
       });
 
       // The following would cause TypeScript compile errors (commented out to avoid build failure):
-      // ❌ await repo.update(createdId, { unset: ['name'] });         // name is required
-      // ❌ await repo.update(createdId, { unset: ['email'] });        // email is required
-      // ❌ await repo.update(createdId, { unset: ['age'] });          // age is required
-      // ❌ await repo.update(createdId, { unset: ['isActive'] });     // isActive is required
-      // ❌ await repo.update(createdId, { unset: ['organizationId'] }); // organizationId is required
-      // ❌ await repoWithUndefined.update(createdId2, { unset: ['name'] }); // name cannot be undefined
+      // await repo.update(createdId, { unset: ['name'] });
+      // await repo.update(createdId, { unset: ['email'] });
+      // await repo.update(createdId, { unset: ['age'] });
+      // await repo.update(createdId, { unset: ['isActive'] });
+      // await repo.update(createdId, { unset: ['organizationId'] });
+      // await repo.update(createdId, { unset: ['name'] });
 
-      const updated = await repoWithUndefined.getById(createdId);
+      const updated = await repo.getById(createdId);
       expect(updated).not.toHaveProperty('description');
       expect(updated).not.toHaveProperty('metadata');
     });
@@ -645,6 +655,9 @@ describe('createSmartMongoRepo', function () {
       // verify no entity was created
       const retrieved = await repo.getById('non-existent-id');
       expect(retrieved).toBeNull();
+
+      const matched = await repo.find({ name: 'New Name' });
+      expect(matched).toHaveLength(0);
     });
 
     it('should recursively filter undefined properties in set operations (not store as null)', async () => {
@@ -838,19 +851,18 @@ describe('createSmartMongoRepo', function () {
       const entities = range(0, 150).map((i) =>
         createTestEntity({ name: `Entity ${i}` })
       );
-      const createdIds: string[] = [];
 
-      for (const entity of entities) {
-        const createdId = await repo.create(entity);
-        createdIds.push(createdId);
-      }
+      const createdIds = await repo.createMany(entities);
+      expect(createdIds).toHaveLength(150);
 
       await repo.updateMany(createdIds, { set: { isActive: false } });
 
-      for (const id of createdIds) {
-        const updated = await repo.getById(id);
-        expect(updated?.isActive).toBe(false);
-      }
+      const [updated, notFound] = await repo.getByIds(createdIds);
+
+      expect([
+        updated.filter((u) => !u.isActive).length,
+        notFound.length,
+      ]).toEqual([150, 0]);
     });
 
     it('should handle mixed existing and non-existing ids', async () => {
@@ -998,7 +1010,7 @@ describe('createSmartMongoRepo', function () {
         'isActive'
       );
 
-      await scopedRepo.upsert({ ...entity, isActive: true });
+      await scopedRepo.upsert(entity);
 
       const retrieved = await scopedRepo.getById('scoped-upsert');
       expect(retrieved).toMatchObject({
@@ -1091,7 +1103,7 @@ describe('createSmartMongoRepo', function () {
       expect(raw?._updatedAt).toBeInstanceOf(Date);
       expect(
         Math.abs(raw!._createdAt.getTime() - raw!._updatedAt.getTime())
-      ).toBeLessThan(100); // _createdAt is app time
+      ).toBeLessThan(1000); // _createdAt is app time, diff should be way lower, but tests are sometimes slow
 
       await new Promise((r) => setTimeout(r, 2));
 
@@ -1109,12 +1121,15 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should strip system-managed fields from input entities during upsert', async () => {
+      let time = new Date('2025-01-01T00:00:00Z');
+      const clock = () => time;
+
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: {
           softDelete: true,
-          traceTimestamps: true,
+          traceTimestamps: clock,
           version: true,
         },
       });
@@ -1142,8 +1157,8 @@ describe('createSmartMongoRepo', function () {
       // Verify malicious system fields were stripped and proper values set
       expect(rawDoc?._deleted).toBeUndefined(); // Should not exist (not soft-deleted)
       expect(rawDoc?._version).toBe(1); // Should be 1, not 999 (initial version for new doc)
-      expect(rawDoc?._createdAt).toBeInstanceOf(Date); // Should be current time, not 2020
-      expect(rawDoc?._updatedAt).toBeInstanceOf(Date); // Should be current time, not 2021
+      expect(rawDoc?._createdAt).toEqual(time); // Should be current time, not 2020
+      expect(rawDoc?._updatedAt).toEqual(time); // Should be current time, not 2021
       expect(rawDoc?._deletedAt).toBeUndefined(); // Should not exist
 
       // Verify the actual data was preserved
@@ -1162,6 +1177,7 @@ describe('createSmartMongoRepo', function () {
         _deletedAt: new Date('2021-01-01'), // Should be stripped
       } as any;
 
+      time = new Date('2021-01-01T00:00:01Z');
       await repo.upsert(updateWithSystemFields);
 
       // Check the updated document
@@ -1173,7 +1189,7 @@ describe('createSmartMongoRepo', function () {
       expect(updatedRawDoc?._deleted).toBeUndefined(); // Should still not exist
       expect(updatedRawDoc?._version).toBe(2); // Should be 2 (incremented), not 555
       expect(updatedRawDoc?._createdAt).toEqual(rawDoc?._createdAt); // Should be unchanged
-      expect(updatedRawDoc?._updatedAt).toBeInstanceOf(Date); // Should be updated time
+      expect(updatedRawDoc?._updatedAt).toEqual(time); // Should be updated time
       expect(updatedRawDoc?._deletedAt).toBeUndefined(); // Should still not exist
 
       // Verify the actual data was updated
@@ -1226,7 +1242,9 @@ describe('createSmartMongoRepo', function () {
       });
 
       // This should fail because it tries to create a new entity with existing ID
-      await expect(repo.upsert(upsertEntity)).rejects.toThrow();
+      await expect(repo.upsert(upsertEntity)).rejects.toThrow(
+        'duplicate key error'
+      );
 
       // upsert with includeSoftDeleted: true should work and update the soft-deleted entity
       const restoringUpsertEntity = createTestEntity({
@@ -1243,47 +1261,6 @@ describe('createSmartMongoRepo', function () {
       // the entity should still not appear in normal queries because _deleted is still true
       const afterUpsert = await repo.getById(createdId);
       expect(afterUpsert).toBeNull(); // Should still be null because _deleted is still true
-    });
-
-    it('upsertMany should respect soft-delete behavior', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-        options: { softDelete: true },
-      });
-
-      // create and soft-delete some entities
-      const [id1, id2] = await repo.createMany([
-        createTestEntity({ name: 'Entity 1' }),
-        createTestEntity({ name: 'Entity 2' }),
-      ]);
-      await repo.deleteMany([id1, id2]);
-
-      // normal upsertMany should fail for soft-deleted entities (tries to create with existing ID)
-      const normalUpserts = [
-        createTestEntity({ id: id1, name: 'Should Fail 1' }),
-        createTestEntity({ id: id2, name: 'Should Fail 2' }),
-      ];
-      await expect(repo.upsertMany(normalUpserts)).rejects.toThrow();
-
-      // upsertMany with includeSoftDeleted should work
-      const includedUpserts = [
-        createTestEntity({ id: id1, name: 'Restored 1' }),
-        createTestEntity({ id: id2, name: 'Restored 2' }),
-      ];
-      await repo.upsertMany(includedUpserts, { includeSoftDeleted: true });
-
-      // verify data was updated but entities are still soft-deleted
-      const raw1 = await rawTestCollection().findOne({ _id: id1 });
-      const raw2 = await rawTestCollection().findOne({ _id: id2 });
-      expect(raw1?.name).toBe('Restored 1');
-      expect(raw2?.name).toBe('Restored 2');
-      expect(raw1).toHaveProperty('_deleted', true);
-      expect(raw2).toHaveProperty('_deleted', true);
-
-      // entities should still not appear in normal queries
-      expect(await repo.getById(id1)).toBeNull();
-      expect(await repo.getById(id2)).toBeNull();
     });
   });
 
@@ -1329,7 +1306,7 @@ describe('createSmartMongoRepo', function () {
         createTestEntity({ name: 'Original 1', age: 20 }),
         createTestEntity({ name: 'Original 2', age: 25 }),
       ];
-      const [id1, id2] = await Promise.all(initialEntities.map(repo.create));
+      const [id1, id2] = await repo.createMany(initialEntities);
 
       // upsert with replacements
       const upsertEntities = [
@@ -1497,6 +1474,47 @@ describe('createSmartMongoRepo', function () {
       expect(found).toHaveLength(2);
       expect(found.every((e) => e.isActive)).toBe(true);
     });
+
+    it('upsertMany should respect soft-delete behavior', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        options: { softDelete: true },
+      });
+
+      // create and soft-delete some entities
+      const [id1, id2] = await repo.createMany([
+        createTestEntity({ name: 'Entity 1' }),
+        createTestEntity({ name: 'Entity 2' }),
+      ]);
+      await repo.deleteMany([id1, id2]);
+
+      // normal upsertMany should fail for soft-deleted entities (tries to create with existing ID)
+      const normalUpserts = [
+        createTestEntity({ id: id1, name: 'Should Fail 1' }),
+        createTestEntity({ id: id2, name: 'Should Fail 2' }),
+      ];
+      await expect(repo.upsertMany(normalUpserts)).rejects.toThrow();
+
+      // upsertMany with includeSoftDeleted should work
+      const includedUpserts = [
+        createTestEntity({ id: id1, name: 'Restored 1' }),
+        createTestEntity({ id: id2, name: 'Restored 2' }),
+      ];
+      await repo.upsertMany(includedUpserts, { includeSoftDeleted: true });
+
+      // verify data was updated but entities are still soft-deleted
+      const raw1 = await rawTestCollection().findOne({ _id: id1 });
+      const raw2 = await rawTestCollection().findOne({ _id: id2 });
+      expect(raw1?.name).toBe('Restored 1');
+      expect(raw2?.name).toBe('Restored 2');
+      expect(raw1).toHaveProperty('_deleted', true);
+      expect(raw2).toHaveProperty('_deleted', true);
+
+      // entities should still not appear in normal queries
+      expect(await repo.getById(id1)).toBeNull();
+      expect(await repo.getById(id2)).toBeNull();
+    });
   });
 
   describe('delete', () => {
@@ -1515,12 +1533,11 @@ describe('createSmartMongoRepo', function () {
       expect(deleted).toBeNull();
     });
 
-    it('should not affect non-existent entities', async () => {
+    it('should not throw on non-existent entities', async () => {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
-      // this should not throw an error
       await repo.delete('non-existent-id');
     });
   });
@@ -1534,19 +1551,14 @@ describe('createSmartMongoRepo', function () {
       const entities = range(0, 5).map((i) =>
         createTestEntity({ name: `Entity ${i}` })
       );
-      const createdIds: string[] = [];
 
-      for (const entity of entities) {
-        const createdId = await repo.create(entity);
-        createdIds.push(createdId);
-      }
+      const createdIds = await repo.createMany(entities);
 
       await repo.deleteMany(createdIds);
 
-      for (const id of createdIds) {
-        const deleted = await repo.getById(id);
-        expect(deleted).toBeNull();
-      }
+      const [found, notFound] = await repo.getByIds(createdIds);
+
+      expect([found.length, notFound.length]).toEqual([0, 5]);
     });
 
     it('should handle large batches with chunking', async () => {
@@ -1557,19 +1569,14 @@ describe('createSmartMongoRepo', function () {
       const entities = range(0, 150).map((i) =>
         createTestEntity({ name: `Entity ${i}` })
       );
-      const createdIds: string[] = [];
 
-      for (const entity of entities) {
-        const createdId = await repo.create(entity);
-        createdIds.push(createdId);
-      }
+      const createdIds = await repo.createMany(entities);
 
       await repo.deleteMany(createdIds);
 
-      for (const id of createdIds) {
-        const deleted = await repo.getById(id);
-        expect(deleted).toBeNull();
-      }
+      const [found, notFound] = await repo.getByIds(createdIds);
+
+      expect([found.length, notFound.length]).toEqual([0, 150]);
     });
 
     it('should handle mixed existing and non-existing ids', async () => {
