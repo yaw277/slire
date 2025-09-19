@@ -743,6 +743,16 @@ export function createSmartMongoRepo<
       filter: Partial<T>,
       projection?: P
     ): Promise<Projected<T, P>[]> => {
+      if (
+        Object.entries(scope).some(
+          ([k, v]) =>
+            (filter as any)[k] !== undefined && v !== (filter as any)[k]
+        )
+      ) {
+        // result is empty for attempted scope breach
+        return [];
+      }
+
       // convert id to _id for MongoDB queries
       const { id, ...restFilter } = filter;
       const mongoFilter = id ? { _id: id, ...restFilter } : restFilter;

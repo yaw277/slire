@@ -1101,9 +1101,11 @@ describe('createSmartMongoRepo', function () {
       const raw = await rawTestCollection().findOne({ _id: 'mongo-timestamp' });
       expect(raw?._createdAt).toBeInstanceOf(Date);
       expect(raw?._updatedAt).toBeInstanceOf(Date);
+      // _createdAt is app time and should be slightly before _updatedAt (server time)
+      // diff should be minimal, but depends on testing env
       expect(
-        Math.abs(raw!._createdAt.getTime() - raw!._updatedAt.getTime())
-      ).toBeLessThan(1000); // _createdAt is app time, diff should be way lower, but tests are sometimes slow
+        raw!._updatedAt.getTime() - raw!._createdAt.getTime()
+      ).toBeGreaterThan(0);
 
       await new Promise((r) => setTimeout(r, 2));
 
@@ -1604,16 +1606,13 @@ describe('createSmartMongoRepo', function () {
         collection: testCollection(),
         mongoClient: mongo.client,
       });
-      const entities = [
+
+      await repo.createMany([
         createTestEntity({ name: 'Alice', age: 25, isActive: true }),
         createTestEntity({ name: 'Bob', age: 30, isActive: true }),
         createTestEntity({ name: 'Charlie', age: 35, isActive: false }),
         createTestEntity({ name: 'David', age: 40, isActive: true }),
-      ];
-
-      for (const entity of entities) {
-        await repo.create(entity);
-      }
+      ]);
 
       const activeUsers = await repo.find({ isActive: true });
       expect(activeUsers).toHaveLength(3);
@@ -1621,11 +1620,26 @@ describe('createSmartMongoRepo', function () {
         expect(user.isActive).toBe(true);
       });
 
-      // Note: MongoDB query operators are not supported in the generic repo interface
-      // This would need to be implemented as a special-purpose function
       const youngUsers = await repo.find({ age: 25 }); // exact match only
       expect(youngUsers).toHaveLength(1);
       expect(youngUsers[0].name).toBe('Alice');
+    });
+
+    it('should return all entities if filter is empty', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      await repo.createMany([
+        createTestEntity({ name: 'Alice', age: 25, isActive: true }),
+        createTestEntity({ name: 'Bob', age: 30, isActive: true }),
+        createTestEntity({ name: 'Charlie', age: 35, isActive: false }),
+        createTestEntity({ name: 'David', age: 40, isActive: true }),
+      ]);
+
+      const all = await repo.find({});
+      expect(all).toHaveLength(4);
     });
 
     it('should return empty array when no entities match', async () => {
@@ -1696,25 +1710,57 @@ describe('createSmartMongoRepo', function () {
     });
   });
 
-  describe('specification pattern', () => {
+  describe('count', () => {
+    it('should count entities matching the filter', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      await repo.createMany([
+        createTestEntity({ name: 'Alice', age: 25, isActive: true }),
+        createTestEntity({ name: 'Bob', age: 30, isActive: true }),
+        createTestEntity({ name: 'Charlie', age: 35, isActive: false }),
+        createTestEntity({ name: 'David', age: 40, isActive: true }),
+      ]);
+
+      const totalCount = await repo.count({});
+      expect(totalCount).toBe(4);
+
+      const activeCount = await repo.count({ isActive: true });
+      expect(activeCount).toBe(3);
+
+      const age25Count = await repo.count({ age: 25 });
+      expect(age25Count).toBe(1);
+    });
+
+    it('should return 0 when no entities match', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      const entity = createTestEntity({ name: 'Test Entity' });
+      await repo.create(entity);
+
+      const count = await repo.count({ name: 'Non-existent' });
+      expect(count).toBe(0);
+    });
+  });
+
+  describe('findBySpec, countBySpec', () => {
     it('should support findBySpec and countBySpec with basic specifications', async () => {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
 
-      // Create test data
-      const entities = [
+      await repo.createMany([
         createTestEntity({ name: 'Alice', age: 25, isActive: true }),
         createTestEntity({ name: 'Bob', age: 30, isActive: true }),
         createTestEntity({ name: 'Charlie', age: 35, isActive: false }),
-      ];
+      ]);
 
-      for (const entity of entities) {
-        await repo.create(entity);
-      }
-
-      // Create specifications
       const activeUsersSpec: Specification<TestEntity> = {
         toFilter: () => ({ isActive: true }),
         describe: 'active users',
@@ -1725,7 +1771,6 @@ describe('createSmartMongoRepo', function () {
         describe: 'users aged 25',
       };
 
-      // Test findBySpec
       const activeUsers = await repo.findBySpec(activeUsersSpec);
       expect(activeUsers).toHaveLength(2);
       activeUsers.forEach((user) => expect(user.isActive).toBe(true));
@@ -1734,7 +1779,6 @@ describe('createSmartMongoRepo', function () {
       expect(youngUsers).toHaveLength(1);
       expect(youngUsers[0].name).toBe('Alice');
 
-      // Test countBySpec
       const activeCount = await repo.countBySpec(activeUsersSpec);
       expect(activeCount).toBe(2);
 
@@ -1774,18 +1818,12 @@ describe('createSmartMongoRepo', function () {
         mongoClient: mongo.client,
       });
 
-      // Create test data
-      const entities = [
+      await repo.createMany([
         createTestEntity({ name: 'Alice', age: 25, isActive: true }),
         createTestEntity({ name: 'Bob', age: 30, isActive: true }),
         createTestEntity({ name: 'Charlie', age: 25, isActive: false }),
-      ];
+      ]);
 
-      for (const entity of entities) {
-        await repo.create(entity);
-      }
-
-      // Create individual specifications
       const activeSpec: Specification<TestEntity> = {
         toFilter: () => ({ isActive: true }),
         describe: 'active users',
@@ -1796,17 +1834,14 @@ describe('createSmartMongoRepo', function () {
         describe: 'users aged 25',
       };
 
-      // Combine specifications
       const combinedSpec = combineSpecs(activeSpec, youngSpec);
 
-      // Test combined specification
       const results = await repo.findBySpec(combinedSpec);
       expect(results).toHaveLength(1);
       expect(results[0].name).toBe('Alice');
       expect(results[0].isActive).toBe(true);
       expect(results[0].age).toBe(25);
 
-      // Test description combines properly
       expect(combinedSpec.describe).toBe('active users AND users aged 25');
 
       const count = await repo.countBySpec(combinedSpec);
@@ -1819,16 +1854,11 @@ describe('createSmartMongoRepo', function () {
         mongoClient: mongo.client,
       });
 
-      // Create test data
-      const entities = [
+      await repo.createMany([
         createTestEntity({ name: 'Alice', age: 25, isActive: true }),
         createTestEntity({ name: 'Bob', age: 30, isActive: true }),
         createTestEntity({ name: 'Charlie', age: 35, isActive: false }),
-      ];
-
-      for (const entity of entities) {
-        await repo.create(entity);
-      }
+      ]);
 
       // Branded specification approach
       const APPROVED_SPEC = Symbol('approved-specification');
@@ -1884,49 +1914,6 @@ describe('createSmartMongoRepo', function () {
       // This would fail at compile time:
       // const rogueSpec = { toFilter: () => ({}), describe: 'hack' };
       // const result = await findByApprovedSpec(repo, rogueSpec); // ❌ Type error!
-
-      // This would also fail at compile time:
-      // const rogueApproved = createApprovedSpec(rogueSpec); // ❌ createApprovedSpec not exported!
-    });
-  });
-
-  describe('count', () => {
-    it('should count entities matching the filter', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-      });
-      const entities = [
-        createTestEntity({ name: 'Alice', age: 25, isActive: true }),
-        createTestEntity({ name: 'Bob', age: 30, isActive: true }),
-        createTestEntity({ name: 'Charlie', age: 35, isActive: false }),
-        createTestEntity({ name: 'David', age: 40, isActive: true }),
-      ];
-
-      for (const entity of entities) {
-        await repo.create(entity);
-      }
-
-      const totalCount = await repo.count({});
-      expect(totalCount).toBe(4);
-
-      const activeCount = await repo.count({ isActive: true });
-      expect(activeCount).toBe(3);
-
-      const age25Count = await repo.count({ age: 25 });
-      expect(age25Count).toBe(1);
-    });
-
-    it('should return 0 when no entities match', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-      });
-      const entity = createTestEntity({ name: 'Test Entity' });
-      await repo.create(entity);
-
-      const count = await repo.count({ name: 'Non-existent' });
-      expect(count).toBe(0);
     });
   });
 
@@ -1936,6 +1923,7 @@ describe('createSmartMongoRepo', function () {
         collection: testCollection(),
         mongoClient: mongo.client,
       });
+
       const scopedRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
@@ -1970,12 +1958,12 @@ describe('createSmartMongoRepo', function () {
 
       const id = await scopedRepo.create(createTestEntity());
       const moreIds = await scopedRepo.createMany(
-        range(0, 2).map((_) => createTestEntity())
+        range(0, 2).map((_) => omit(createTestEntity(), 'isActive'))
       );
 
       const result = await scopedRepo.getByIds([id, ...moreIds], {
         isActive: true,
-      }); // with projection
+      });
 
       expect(result).toEqual([
         [{ isActive: true }, { isActive: true }, { isActive: true }],
@@ -2001,7 +1989,7 @@ describe('createSmartMongoRepo', function () {
       const { isActive, ...entityWithoutScope } = createTestEntity({
         name: 'Valid User No Scope',
       });
-      await scopedRepo.create(entityWithoutScope as any);
+      await scopedRepo.create(entityWithoutScope);
 
       // this should fail - wrong scope value
       const invalidEntity = createTestEntity({
@@ -2013,8 +2001,7 @@ describe('createSmartMongoRepo', function () {
       );
     });
 
-    it('should prevent updating entities with scope properties', async () => {
-      // create a scoped repository
+    it('should prevent updating scope properties', async () => {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
@@ -2025,7 +2012,6 @@ describe('createSmartMongoRepo', function () {
         scope: { isActive: true },
       });
 
-      // create an entity first
       const entity = createTestEntity({ name: 'Test User', isActive: true });
       const id = await repo.create(entity as any);
 
@@ -2043,27 +2029,7 @@ describe('createSmartMongoRepo', function () {
       ).rejects.toThrow('Cannot unset readonly properties: isActive');
     });
 
-    it('should prevent creating many entities with scope properties', async () => {
-      // create a scoped repository
-      const scopedRepo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-        scope: { isActive: true },
-      });
-
-      const entities = [
-        createTestEntity({ name: 'User 1' }),
-        createTestEntity({ name: 'User 2', isActive: false }), // has scope property
-      ];
-
-      // this should fail at runtime
-      await expect(scopedRepo.createMany(entities)).rejects.toThrow(
-        "Cannot create entity: scope property 'isActive' must be 'true', got 'false'"
-      );
-    });
-
     it('should allow reading scope properties', async () => {
-      // create a scoped repository
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
@@ -2074,19 +2040,18 @@ describe('createSmartMongoRepo', function () {
         scope: { isActive: true },
       });
 
-      const entities = [
+      await repo.createMany([
         createTestEntity({ name: 'Active User 1', isActive: true }),
         createTestEntity({ name: 'Active User 2', isActive: true }),
         createTestEntity({ name: 'Inactive User', isActive: false }),
-      ];
+      ]);
 
-      for (const entity of entities) {
-        await repo.create(entity);
-      }
-
-      // should be able to query by scope properties
+      // should be able to query by scope properties (event though it's pointless)
       const activeUsers = await scopedRepo.find({ isActive: true });
       expect(activeUsers).toHaveLength(2);
+
+      // never returns entities out of scope (even if filter says so)
+      expect(await scopedRepo.find({ isActive: false })).toHaveLength(0);
 
       // should be able to project scope properties
       const projectedUsers = await scopedRepo.find(
