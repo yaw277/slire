@@ -2013,7 +2013,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       const entity = createTestEntity({ name: 'Test User', isActive: true });
-      const id = await repo.create(entity as any);
+      const id = await repo.create(entity);
 
       // this should work (no scope property)
       await scopedRepo.update(id, { set: { name: 'Updated Name' } });
@@ -2519,7 +2519,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       const entity = createTestEntity({ name: 'Entity Version Test' });
-      const id = await repo.create(entity as any);
+      const id = await repo.create(entity);
 
       // check initial version
       const retrieved1 = await repo.getById(id);
