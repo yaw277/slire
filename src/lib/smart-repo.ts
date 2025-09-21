@@ -276,7 +276,7 @@ export function createSmartMongoRepo<
   const getPublicIdFromDoc = (doc: any): string =>
     isDetachedIdentity
       ? ((doc as any).id as string)
-      : (doc._id as unknown as string);
+      : (doc._id as unknown as string); // in synced mode, _id is the public id and always a string
   const convertFilter = (filter: Partial<T>): any => {
     if (isDetachedIdentity) {
       return filter as any;
