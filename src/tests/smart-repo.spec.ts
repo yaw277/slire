@@ -88,7 +88,7 @@ describe('createSmartMongoRepo', function () {
       const created = await repo.getById(createdId);
       expect(created).toEqual({
         id: createdId,
-        organizationId: 'org123',
+        tenantId: 'org123',
         name: 'Test User',
         email: 'test@example.com',
         age: 30,
@@ -346,7 +346,7 @@ describe('createSmartMongoRepo', function () {
       const firstEntity = found.find((e) => e.name === 'User 1');
       expect(firstEntity).toEqual({
         id: createdIds[0],
-        organizationId: firstEntity!.organizationId,
+        tenantId: firstEntity!.tenantId,
         name: 'User 1',
         email: 'test@example.com',
         age: 30,
@@ -357,7 +357,7 @@ describe('createSmartMongoRepo', function () {
       const secondEntity = found.find((e) => e.name === 'User 2');
       expect(secondEntity).toEqual({
         id: createdIds[1],
-        organizationId: secondEntity!.organizationId,
+        tenantId: secondEntity!.tenantId,
         name: 'User 2',
         email: 'test@example.com',
         age: 30,
@@ -414,7 +414,7 @@ describe('createSmartMongoRepo', function () {
 
       expect(retrieved).toEqual({
         id: createdId,
-        organizationId: entity.organizationId,
+        tenantId: entity.tenantId,
         name: 'Test Entity',
         email: 'test@example.com',
         age: 30,
@@ -547,7 +547,7 @@ describe('createSmartMongoRepo', function () {
       const updated = await repo.getById(createdId);
       expect(updated).toEqual({
         id: createdId,
-        organizationId: entity.organizationId,
+        tenantId: entity.tenantId,
         name: 'Updated Name',
         email: 'test@example.com',
         age: 35,
@@ -600,7 +600,7 @@ describe('createSmartMongoRepo', function () {
 
       expect(updated).toEqual({
         id: createdId,
-        organizationId: entity.organizationId,
+        tenantId: entity.tenantId,
         name: 'New Name',
         email: 'test@example.com',
         age: 40,
@@ -718,11 +718,11 @@ describe('createSmartMongoRepo', function () {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { organizationId: 'acme' },
+        scope: { tenantId: 'acme' },
       });
 
       const id = await repo.create(
-        createTestEntity({ organizationId: 'acme', name: 'Original Name' })
+        createTestEntity({ tenantId: 'acme', name: 'Original Name' })
       );
 
       await repo.update(id, { set: { name: 'Updated Name' } });
@@ -736,23 +736,21 @@ describe('createSmartMongoRepo', function () {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { organizationId: 'acme' },
+        scope: { tenantId: 'acme' },
       });
 
       const id = await repo.create(
-        createTestEntity({ organizationId: 'acme', name: 'Original Name' })
+        createTestEntity({ tenantId: 'acme', name: 'Original Name' })
       );
 
       await expect(
         repo.update(id, {
-          set: { organizationId: 'foo', name: 'Updated Name' } as any,
+          set: { tenantId: 'foo', name: 'Updated Name' } as any,
         })
-      ).rejects.toThrow('Cannot update readonly properties: organizationId');
+      ).rejects.toThrow('Cannot update readonly properties: tenantId');
 
-      expect(
-        await repo.getById(id, { organizationId: true, name: true })
-      ).toEqual({
-        organizationId: 'acme',
+      expect(await repo.getById(id, { tenantId: true, name: true })).toEqual({
+        tenantId: 'acme',
         name: 'Original Name',
       });
     });
@@ -766,12 +764,12 @@ describe('createSmartMongoRepo', function () {
         collection:
           testCollection() as unknown as Collection<EntityWithManagedFields>,
         mongoClient: mongo.client,
-        scope: { organizationId: 'acme' },
+        scope: { tenantId: 'acme' },
         options: { version: '_v', timestampKeys: { createdAt: '_createdAt' } },
       });
 
       const id = await repo.create(
-        createTestEntity({ organizationId: 'acme', name: 'Original Name' })
+        createTestEntity({ tenantId: 'acme', name: 'Original Name' })
       );
 
       await expect(
@@ -781,10 +779,8 @@ describe('createSmartMongoRepo', function () {
         })
       ).rejects.toThrow('Cannot update readonly properties: _v');
 
-      expect(
-        await repo.getById(id, { organizationId: true, name: true })
-      ).toEqual({
-        organizationId: 'acme',
+      expect(await repo.getById(id, { tenantId: true, name: true })).toEqual({
+        tenantId: 'acme',
         name: 'Original Name',
       });
     });
@@ -797,12 +793,12 @@ describe('createSmartMongoRepo', function () {
       const repo = createSmartMongoRepo({
         collection: rawTestCollection() as Collection<EntityWithManagedFields>,
         mongoClient: mongo.client,
-        scope: { organizationId: 'acme' },
+        scope: { tenantId: 'acme' },
         options: { version: '_v', timestampKeys: { createdAt: '_createdAt' } },
       });
 
       const id = await repo.create(
-        createTestEntity({ organizationId: 'acme', name: 'Original Name' })
+        createTestEntity({ tenantId: 'acme', name: 'Original Name' })
       );
 
       await expect(
@@ -812,10 +808,8 @@ describe('createSmartMongoRepo', function () {
         })
       ).rejects.toThrow('Cannot unset readonly properties: _createdAt');
 
-      expect(
-        await repo.getById(id, { organizationId: true, name: true })
-      ).toEqual({
-        organizationId: 'acme',
+      expect(await repo.getById(id, { tenantId: true, name: true })).toEqual({
+        tenantId: 'acme',
         name: 'Original Name',
       });
     });
@@ -940,7 +934,7 @@ describe('createSmartMongoRepo', function () {
       const retrieved = await repo.getById('optional-fields-test');
       expect(retrieved).toEqual({
         id: 'optional-fields-test',
-        organizationId: 'org123',
+        tenantId: 'org123',
         name: 'Optional Fields',
         email: 'test@example.com',
         age: 30,
@@ -2674,7 +2668,7 @@ describe('createSmartMongoRepo', function () {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { organizationId: 'acme' },
+        scope: { tenantId: 'acme' },
         options: { softDelete: true, traceTimestamps: true },
       });
 
@@ -2683,27 +2677,25 @@ describe('createSmartMongoRepo', function () {
           set: {
             name: 'Updated1',
             _id: 'foo',
-            organizationId: 'bar',
+            tenantId: 'bar',
             _createdAt: new Date(),
           },
         } as any)
-      ).toThrow(
-        'Cannot update readonly properties: _id, _createdAt, organizationId'
-      );
+      ).toThrow('Cannot update readonly properties: _id, _createdAt, tenantId');
     });
 
     it('applyConstraints with default behavior', async () => {
       const acmeRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { organizationId: 'acme' },
+        scope: { tenantId: 'acme' },
         options: { softDelete: true },
       });
 
       const fooRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { organizationId: 'foo' },
+        scope: { tenantId: 'foo' },
         options: { softDelete: true },
       });
 
@@ -2712,41 +2704,41 @@ describe('createSmartMongoRepo', function () {
           createTestEntity({
             name: '0',
             isActive: true,
-            organizationId: 'acme',
+            tenantId: 'acme',
           })
         ),
         acmeRepo.create(
           createTestEntity({
             name: '1',
             isActive: true,
-            organizationId: 'acme',
+            tenantId: 'acme',
           })
         ),
         acmeRepo.create(
           createTestEntity({
             name: '2',
             isActive: false,
-            organizationId: 'acme',
+            tenantId: 'acme',
           })
         ),
         fooRepo.create(
-          createTestEntity({ name: '3', isActive: true, organizationId: 'foo' })
+          createTestEntity({ name: '3', isActive: true, tenantId: 'foo' })
         ),
         fooRepo.create(
-          createTestEntity({ name: '4', isActive: true, organizationId: 'foo' })
+          createTestEntity({ name: '4', isActive: true, tenantId: 'foo' })
         ),
         fooRepo.create(
           createTestEntity({
             name: '5',
             isActive: false,
-            organizationId: 'foo',
+            tenantId: 'foo',
           })
         ),
         fooRepo.create(
           createTestEntity({
             name: '6',
             isActive: false,
-            organizationId: 'foo',
+            tenantId: 'foo',
           })
         ),
       ]);
@@ -2775,13 +2767,11 @@ describe('createSmartMongoRepo', function () {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { organizationId: 'acme' },
+        scope: { tenantId: 'acme' },
         options: { softDelete: true },
       });
 
-      const id = await repo.create(
-        createTestEntity({ organizationId: 'acme' })
-      );
+      const id = await repo.create(createTestEntity({ tenantId: 'acme' }));
 
       // Soft delete the entity
       await repo.delete(id);
@@ -3224,7 +3214,7 @@ describe('createSmartMongoRepo', function () {
 
 type TestEntity = {
   id: string;
-  organizationId: string;
+  tenantId: string;
   name: string;
   email: string;
   age: number;
@@ -3238,7 +3228,7 @@ type TestEntity = {
 function createTestEntity(overrides: Partial<TestEntity> = {}): TestEntity {
   return {
     id: uuidv4(),
-    organizationId: 'org123',
+    tenantId: 'org123',
     name: 'Test User',
     email: 'test@example.com',
     age: 30,
