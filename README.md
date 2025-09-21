@@ -335,11 +335,15 @@ Bulk version of `getById` that retrieves multiple entities by their IDs. Returns
 
 Creates a new entity in the repository. Returns the generated ID for the created entity. The repository automatically generates a unique ID, applies configured scope values, and generates all system-managed fields (timestamps, version). While `CreateInput` allows managed fields to be present in the input for convenience, system fields are ignored and scope fields are validated - the operation fails if provided scope values don't match the repository's configured scope.
 
+Note: This method delegates to `createMany` internally and can therefore throw `CreateManyPartialFailure` under the same conditions (for a single-entity batch, see below).
+
 ### createMany
 
 `createMany(entities: CreateInput[]): Promise<string[]>`
 
 Bulk version of `create` that creates multiple entities in a single operation. Returns an array of generated IDs corresponding to the created entities. The order of returned IDs matches the order of input entities. All entities are subject to the same automatic ID generation, scope validation, and consistency feature handling as the single `create` function.
+
+Error handling and partial writes: The function performs a bulk upsert using `$setOnInsert` so existing documents are never silently updated. It generates IDs up front and, on success, returns them in the same order as the input entities. For large inputs, the operation runs in chunks to respect MongoDB limits. If a chunk cannot be fully inserted (for example, due to a duplicate key), the function throws `CreateManyPartialFailure`. This error reports the public IDs that were inserted up to the failure point (including prior chunks and the inserted subset of the failing chunk) and the public IDs that were not inserted (the non-inserted subset of the failing chunk plus all subsequent chunks that are skipped). This makes partial results explicit and allows callers to reconcile state or retry as needed. If you need atomicity, wrap the call in a transaction with `runTransaction`.
 
 ### update
 
