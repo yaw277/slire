@@ -997,11 +997,12 @@ describe('createSmartMongoRepo', function () {
       const scopedRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { isActive: true },
+        scope: { tenantId: 'acme' },
       });
+
       const entity = omit(
         createTestEntity({ id: 'scoped-upsert', name: 'Scoped Upsert' }),
-        'isActive'
+        'tenantId'
       );
 
       await scopedRepo.upsert(entity);
@@ -1010,7 +1011,7 @@ describe('createSmartMongoRepo', function () {
       expect(retrieved).toMatchObject({
         id: 'scoped-upsert',
         name: 'Scoped Upsert',
-        isActive: true,
+        tenantId: 'acme',
       });
     });
 
@@ -1018,14 +1019,14 @@ describe('createSmartMongoRepo', function () {
       const scopedRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { isActive: true },
+        scope: { tenantId: 'acme' },
       });
 
       // Valid scope value should work
       const validEntity = createTestEntity({
         id: 'valid-scope',
         name: 'Valid',
-        isActive: true,
+        tenantId: 'acme',
       });
       await scopedRepo.upsert(validEntity);
 
@@ -1033,11 +1034,11 @@ describe('createSmartMongoRepo', function () {
       const entityWithWrongScope = createTestEntity({
         id: 'invalid-scope',
         name: 'Invalid',
-        isActive: false,
+        tenantId: 'not-acme',
       });
 
       await expect(scopedRepo.upsert(entityWithWrongScope)).rejects.toThrow(
-        "Cannot upsert entity: scope property 'isActive' must be 'true', got 'false'"
+        "Cannot upsert entity: scope property 'tenantId' must be 'acme', got 'not-acme'"
       );
     });
 
@@ -1446,29 +1447,27 @@ describe('createSmartMongoRepo', function () {
       const scopedRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { isActive: true },
+        scope: { tenantId: 'acme' },
       });
-      const entities = [
+
+      await scopedRepo.upsertMany([
         omit(
           createTestEntity({ id: 'scoped-many-1', name: 'Scoped 1' }),
-          'isActive'
+          'tenantId'
         ),
         omit(
           createTestEntity({ id: 'scoped-many-2', name: 'Scoped 2' }),
-          'isActive'
+          'tenantId'
         ),
-      ];
-
-      await scopedRepo.upsertMany(
-        entities.map((e) => ({ ...e, isActive: true }))
-      );
+      ]);
 
       const [found] = await scopedRepo.getByIds([
         'scoped-many-1',
         'scoped-many-2',
       ]);
+
       expect(found).toHaveLength(2);
-      expect(found.every((e) => e.isActive)).toBe(true);
+      expect(found.every((e) => e.tenantId === 'acme')).toBe(true);
     });
 
     it('upsertMany should respect soft-delete behavior', async () => {
@@ -1921,22 +1920,22 @@ describe('createSmartMongoRepo', function () {
       const scopedRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { isActive: true },
+        scope: { tenantId: 'acme' },
       });
 
-      const [, , inactiveId] = await repo.createMany([
-        createTestEntity({ name: 'Active User 1', isActive: true }),
-        createTestEntity({ name: 'Active User 2', isActive: true }),
-        createTestEntity({ name: 'Inactive User', isActive: false }),
+      const [, , notAcmeId] = await repo.createMany([
+        createTestEntity({ name: 'User 1', tenantId: 'acme' }),
+        createTestEntity({ name: 'User 2', tenantId: 'acme' }),
+        createTestEntity({ name: 'User 3', tenantId: 'not-acme' }),
       ]);
 
-      const inactive = await scopedRepo.getById(inactiveId);
-      expect(inactive).toBeNull();
+      const notAcme = await scopedRepo.getById(notAcmeId);
+      expect(notAcme).toBeNull();
 
-      const activeUsers = await scopedRepo.find({});
-      expect(activeUsers).toHaveLength(2);
-      activeUsers.forEach((user) => {
-        expect(user.isActive).toBe(true);
+      const acmeUsers = await scopedRepo.find({});
+      expect(acmeUsers).toHaveLength(2);
+      acmeUsers.forEach((user) => {
+        expect(user.tenantId).toBe('acme');
       });
 
       const count = await scopedRepo.count({});
@@ -1947,20 +1946,20 @@ describe('createSmartMongoRepo', function () {
       const scopedRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { isActive: true },
+        scope: { tenantId: 'acme' },
       });
 
-      const id = await scopedRepo.create(createTestEntity());
+      const id = await scopedRepo.create(omit(createTestEntity(), 'tenantId'));
       const moreIds = await scopedRepo.createMany(
-        range(0, 2).map((_) => omit(createTestEntity(), 'isActive'))
+        range(0, 2).map((_) => omit(createTestEntity(), 'tenantId'))
       );
 
       const result = await scopedRepo.getByIds([id, ...moreIds], {
-        isActive: true,
+        tenantId: true,
       });
 
       expect(result).toEqual([
-        [{ isActive: true }, { isActive: true }, { isActive: true }],
+        [{ tenantId: 'acme' }, { tenantId: 'acme' }, { tenantId: 'acme' }],
         [],
       ]);
     });
@@ -1969,18 +1968,18 @@ describe('createSmartMongoRepo', function () {
       const scopedRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { isActive: true },
+        scope: { tenantId: 'acme' },
       });
 
       // this should work (matching scope value)
       const validEntity = createTestEntity({
         name: 'Valid User',
-        isActive: true, // matches scope
+        tenantId: 'acme', // matches scope
       });
       await scopedRepo.create(validEntity);
 
       // this should also work (no scope property - will be added automatically)
-      const { isActive, ...entityWithoutScope } = createTestEntity({
+      const { tenantId, ...entityWithoutScope } = createTestEntity({
         name: 'Valid User No Scope',
       });
       await scopedRepo.create(entityWithoutScope);
@@ -1988,10 +1987,10 @@ describe('createSmartMongoRepo', function () {
       // this should fail - wrong scope value
       const invalidEntity = createTestEntity({
         name: 'Invalid User',
-        isActive: false, // doesn't match scope
+        tenantId: 'not-acme', // doesn't match scope
       });
       await expect(scopedRepo.create(invalidEntity)).rejects.toThrow(
-        "Cannot create entity: scope property 'isActive' must be 'true', got 'false'"
+        "Cannot create entity: scope property 'tenantId' must be 'acme', got 'not-acme'"
       );
     });
 
@@ -2003,10 +2002,10 @@ describe('createSmartMongoRepo', function () {
       const scopedRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { isActive: true },
+        scope: { tenantId: 'acme' },
       });
 
-      const entity = createTestEntity({ name: 'Test User', isActive: true });
+      const entity = createTestEntity({ name: 'Test User', tenantId: 'acme' });
       const id = await repo.create(entity);
 
       // this should work (no scope property)
@@ -2014,13 +2013,18 @@ describe('createSmartMongoRepo', function () {
 
       // this should fail at runtime (scope property in set)
       await expect(
-        scopedRepo.update(id, { set: { isActive: false } } as any)
-      ).rejects.toThrow('Cannot update readonly properties: isActive');
+        scopedRepo.update(id, { set: { tenantId: 'not-acme' } } as any)
+      ).rejects.toThrow('Cannot update readonly properties: tenantId');
+
+      // this should fail at runtime (scope property in set even if it matches scope)
+      await expect(
+        scopedRepo.update(id, { set: { tenantId: 'acme' } } as any)
+      ).rejects.toThrow('Cannot update readonly properties: tenantId');
 
       // this should fail at runtime (scope property in unset)
       await expect(
-        scopedRepo.update(id, { unset: ['isActive'] } as any)
-      ).rejects.toThrow('Cannot unset readonly properties: isActive');
+        scopedRepo.update(id, { unset: ['tenantId'] } as any)
+      ).rejects.toThrow('Cannot unset readonly properties: tenantId');
     });
 
     it('should allow reading scope properties', async () => {
@@ -2028,33 +2032,34 @@ describe('createSmartMongoRepo', function () {
         collection: testCollection(),
         mongoClient: mongo.client,
       });
+
       const scopedRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { isActive: true },
+        scope: { tenantId: 'acme' },
       });
 
       await repo.createMany([
-        createTestEntity({ name: 'Active User 1', isActive: true }),
-        createTestEntity({ name: 'Active User 2', isActive: true }),
-        createTestEntity({ name: 'Inactive User', isActive: false }),
+        createTestEntity({ name: 'Active User 1', tenantId: 'acme' }),
+        createTestEntity({ name: 'Active User 2', tenantId: 'acme' }),
+        createTestEntity({ name: 'Inactive User', tenantId: 'not-acme' }),
       ]);
 
       // should be able to query by scope properties (event though it's pointless)
-      const activeUsers = await scopedRepo.find({ isActive: true });
+      const activeUsers = await scopedRepo.find({ tenantId: 'acme' });
       expect(activeUsers).toHaveLength(2);
 
       // never returns entities out of scope (even if filter says so)
-      expect(await scopedRepo.find({ isActive: false })).toHaveLength(0);
+      expect(await scopedRepo.find({ tenantId: 'not-acme' })).toHaveLength(0);
 
       // should be able to project scope properties
       const projectedUsers = await scopedRepo.find(
         {},
-        { isActive: true, name: true }
+        { tenantId: true, name: true }
       );
       expect(projectedUsers).toHaveLength(2);
       projectedUsers.forEach((user) => {
-        expect(user).toHaveProperty('isActive');
+        expect(user).toHaveProperty('tenantId');
         expect(user).toHaveProperty('name');
         expect(user).not.toHaveProperty('email');
       });
@@ -3020,20 +3025,19 @@ describe('createSmartMongoRepo', function () {
       const scopedRepo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
-        scope: { isActive: true },
+        scope: { tenantId: 'acme' },
       });
 
       await scopedRepo.runTransaction(async (txRepo) => {
-        // create entities through scoped repo (should automatically set isActive: true)
         const ids = await txRepo.createMany([
-          createTestEntity({ name: 'Scoped TX 1', isActive: true }),
-          createTestEntity({ name: 'Scoped TX 2', isActive: true }),
+          omit(createTestEntity({ name: 'Scoped TX 1' }), 'tenantId'),
+          omit(createTestEntity({ name: 'Scoped TX 2' }), 'tenantId'),
         ]);
 
         // verify entities are created with scope
         const created = await txRepo.find({});
         expect(created).toHaveLength(2);
-        expect(created.every((e) => e.isActive)).toBe(true);
+        expect(created.every((e) => e.tenantId === 'acme')).toBe(true);
 
         // update through scoped repo
         await txRepo.updateMany(ids, { set: { age: 88 } });
@@ -3042,7 +3046,9 @@ describe('createSmartMongoRepo', function () {
       // verify through base repo
       const allEntities = await baseRepo.find({});
       expect(allEntities).toHaveLength(2);
-      expect(allEntities.every((e) => e.isActive && e.age === 88)).toBe(true);
+      expect(
+        allEntities.every((e) => e.tenantId === 'acme' && e.age === 88)
+      ).toBe(true);
     });
 
     it('should work with upsert operations in transactions', async () => {
