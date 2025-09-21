@@ -357,6 +357,8 @@ Updates a single entity identified by its ID. The update operation supports both
 
 Bulk version of `update` that applies the same update operation to multiple entities identified by their IDs. All entities are subject to the same scope filtering (including soft-delete exclusion by default) and can accept the same `includeSoftDeleted` option. Like the single `update` function, scope properties cannot be modified through bulk updates. Timestamp updates and versioning behavior are identical to the single `update` function. The operation succeeds even if some of the provided IDs don't exist or don't match the scope - only the valid, in-scope entities will be updated.
 
+For large inputs, the operation may run in chunks to respect MongoDB limits and is not atomic across chunks. If you need all-or-nothing behavior across many IDs, wrap the call in a transaction using `runTransaction`.
+
 ### upsert
 
 `upsert(entity: CreateInput, options?: { includeSoftDeleted?: boolean }): Promise<void>`
@@ -369,6 +371,8 @@ Inserts a new entity if it doesn't exist, or updates an existing entity if it do
 
 Bulk version of `upsert` that performs insert-or-update operations on multiple entities in a single call. Each entity is processed independently with the same logic and options support as the single `upsert` function, including the same soft-delete filtering behavior, `includeSoftDeleted` option, and scope property validation. This provides better performance than multiple individual upsert calls while maintaining the same consistency guarantees and scope filtering behavior.
 
+This method is not all-or-nothing. Some entities may be inserted, some updated, and others may fail due to unique constraints or scope rules. For atomicity across entities, wrap the call in a transaction using `runTransaction`.
+
 ### delete
 
 `delete(id: string): Promise<void>`
@@ -380,6 +384,8 @@ Deletes a single entity identified by its ID. The repository applies scope filte
 `deleteMany(ids: string[]): Promise<void>`
 
 Bulk version of `delete` that removes multiple entities identified by their IDs. All entities are subject to the same scope filtering and soft/hard delete behavior as the single `delete` function. The operation succeeds even if some of the provided IDs don't exist or don't match the scope - only the valid, in-scope entities will be deleted.
+
+For large inputs, the operation may run in chunks and is not atomic across chunks. If you need all-or-nothing behavior, run the deletion inside a transaction with `runTransaction`.
 
 ### find
 
