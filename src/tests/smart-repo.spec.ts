@@ -2147,6 +2147,86 @@ describe('createSmartMongoRepo', function () {
     });
   });
 
+  describe('identity', () => {
+    it('detached: create stores separate internal key and business id', async () => {
+      const repo = createSmartMongoRepo<TestEntity>({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        options: { identity: 'detached' },
+      });
+
+      // client-supplied id is ignored on create
+      const suppliedId = 'client-supplied-id';
+      const createdId = await repo.create(
+        createTestEntity({ name: 'Detached A', id: suppliedId } as any)
+      );
+      expect(createdId).not.toBe(suppliedId);
+
+      const raw = await rawTestCollection().findOne({ id: createdId });
+      expect(raw).toBeTruthy();
+      expect(typeof raw!._id).toBe('string');
+      expect(typeof raw!.id).toBe('string');
+      expect(raw!._id).not.toBe(raw!.id);
+
+      const roundTripped = await repo.getById(createdId);
+      expect(roundTripped?.id).toBe(createdId);
+      expect(roundTripped?.name).toBe('Detached A');
+    });
+
+    it('detached: CRUD by business id', async () => {
+      const repo = createSmartMongoRepo<TestEntity>({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        options: { identity: 'detached' },
+      });
+
+      const [aId, bId] = await repo.createMany([
+        createTestEntity({ name: 'A' }),
+        createTestEntity({ name: 'B' }),
+      ]);
+
+      // update by business id
+      await repo.update(aId, { set: { name: 'A-updated' } });
+      const afterUpdate = await repo.getById(aId);
+      expect(afterUpdate?.name).toBe('A-updated');
+
+      // find/count by business id
+      const found = await repo.find({ id: bId });
+      expect(found).toHaveLength(1);
+      expect(found[0].name).toBe('B');
+      expect(await repo.count({ id: bId })).toBe(1);
+
+      // delete by business id
+      await repo.delete(bId);
+      expect(await repo.getById(bId)).toBeNull();
+    });
+
+    it('detached: upsert updates by business id and preserves internal key', async () => {
+      const repo = createSmartMongoRepo<TestEntity>({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        options: { identity: 'detached' },
+      });
+
+      const id = await repo.create(createTestEntity({ name: 'X' }));
+      const before = await rawTestCollection().findOne({ id });
+      const internalBefore = before!._id;
+
+      await repo.upsert({ ...(createTestEntity({ name: 'X2' }) as any), id });
+
+      const after = await rawTestCollection().findOne({ id });
+      expect(after!.name).toBe('X2');
+      // internal _id remains the same after upsert update
+      expect(after!._id).toBe(internalBefore);
+
+      // projection should include id when requested
+      expect(await repo.getById(id, { id: true, name: true })).toEqual({
+        id,
+        name: 'X2',
+      });
+    });
+  });
+
   describe('soft delete', () => {
     it('soft deleted entities stay in the database', async () => {
       const repo = createSmartMongoRepo({
