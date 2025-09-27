@@ -182,8 +182,8 @@ export type SmartRepo<
     options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
   ): Promise<void>;
 
-  delete(id: string): Promise<void>;
-  deleteMany(ids: string[]): Promise<void>;
+  delete(id: string, options?: { mergeTrace?: any }): Promise<void>;
+  deleteMany(ids: string[], options?: { mergeTrace?: any }): Promise<void>;
 
   find(filter: Partial<T>): Promise<T[]>;
   find<P extends Projection<T>>(
@@ -863,20 +863,30 @@ export function createSmartMongoRepo<
       }
     },
 
-    delete: async (id: string): Promise<void> => {
-      await repo.deleteMany([id]);
+    delete: async (
+      id: string,
+      options?: { mergeTrace?: any }
+    ): Promise<void> => {
+      await repo.deleteMany([id], options);
     },
 
-    deleteMany: async (ids: string[]): Promise<void> => {
+    deleteMany: async (
+      ids: string[],
+      options?: { mergeTrace?: any }
+    ): Promise<void> => {
       // use chunking for large batches to avoid MongoDB limitations
       const chunks = chunk(ids, MONGODB_IN_OPERATOR_MAX_CLAUSES);
 
       for (const idChunk of chunks) {
         const filter = applyConstraints(idsFilter(idChunk));
         if (softDeleteEnabled) {
-          const updateOperation = applyVersion(
+          const updateOperation = applyTrace(
             'delete',
-            applyTimestamps('delete', { $set: SOFT_DELETE_MARK })
+            applyVersion(
+              'delete',
+              applyTimestamps('delete', { $set: SOFT_DELETE_MARK })
+            ),
+            options?.mergeTrace
           );
           await collection.updateMany(
             filter,
