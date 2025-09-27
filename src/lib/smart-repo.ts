@@ -62,7 +62,8 @@ type ObjectKeys<T> = {
       ? never
       : K
     : never;
-}[keyof T];
+}[keyof T] &
+  string;
 
 export type UpdateOperation<T> =
   | { set: Partial<T>; unset?: never }
@@ -394,8 +395,8 @@ export function createSmartMongoRepo<
   }
 
   if (traceEnabled) {
-    READONLY_KEYS.add(traceKey as string);
-    configuredKeys.push(traceKey as string);
+    READONLY_KEYS.add(traceKey);
+    configuredKeys.push(traceKey);
   }
 
   // validate that all configured keys are unique to prevent undefined behavior
@@ -436,7 +437,7 @@ export function createSmartMongoRepo<
 
   // add trace field to hidden meta-keys if using default field
   if (traceEnabled && traceKey === DEFAULT_TRACE_KEY) {
-    HIDDEN_META_KEYS.add(traceKey as string);
+    HIDDEN_META_KEYS.add(traceKey);
   }
 
   // helper to centralize timestamp handling
