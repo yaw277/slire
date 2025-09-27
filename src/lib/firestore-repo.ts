@@ -396,10 +396,24 @@ export function createSmartFirestoreRepo<
       id: string,
       projection?: P
     ): Promise<Projected<T, P> | null> => {
-      const docRef = getDocRef(id);
-      const doc = transaction
-        ? await transaction.get(docRef)
-        : await docRef.get();
+      let doc: DocumentSnapshot<T>;
+
+      if (isDetachedIdentity) {
+        // In detached mode, we need to query by the id field
+        const query = applyConstraints(collection.where('id', '==', id));
+        const snapshot = transaction
+          ? await transaction.get(query)
+          : await query.get();
+
+        if (snapshot.empty) {
+          return null;
+        }
+        doc = snapshot.docs[0];
+      } else {
+        // In synced mode, the id is the document ID
+        const docRef = getDocRef(id);
+        doc = transaction ? await transaction.get(docRef) : await docRef.get();
+      }
 
       const result = fromFirestoreDoc(doc, projection);
 
@@ -425,27 +439,51 @@ export function createSmartFirestoreRepo<
         return [[], []];
       }
 
-      const docRefs = ids.map((id) => getDocRef(id));
-      const docs = transaction
-        ? await Promise.all(docRefs.map((ref) => transaction.get(ref)))
-        : await firestore.getAll(...docRefs);
-
       const foundDocs: Projected<T, P>[] = [];
-      const notFoundIds: string[] = [];
+      const foundIds = new Set<string>();
 
-      for (const [index, doc] of docs.entries()) {
-        const result = fromFirestoreDoc(doc as DocumentSnapshot<T>, projection);
-        if (
-          result &&
-          (!config.softDeleteEnabled ||
-            !(result as any)[config.getSoftDeleteKey()])
-        ) {
-          foundDocs.push(result);
-        } else {
-          notFoundIds.push(ids[index]);
+      if (isDetachedIdentity) {
+        // In detached mode, query by the id field (batch queries due to Firestore 'in' limit of 10)
+        const batches = chunk(ids, 10); // Firestore 'in' operator limit
+
+        for (const batch of batches) {
+          const query = applyConstraints(collection.where('id', 'in', batch));
+          const snapshot = transaction
+            ? await transaction.get(query)
+            : await query.get();
+
+          for (const doc of snapshot.docs) {
+            const result = fromFirestoreDoc(doc, projection);
+            if (result) {
+              foundDocs.push(result);
+              foundIds.add((result as any).id);
+            }
+          }
+        }
+      } else {
+        // In synced mode, get documents by their document IDs
+        const docRefs = ids.map((id) => getDocRef(id));
+        const docs = transaction
+          ? await Promise.all(docRefs.map((ref) => transaction.get(ref)))
+          : await firestore.getAll(...docRefs);
+
+        for (const [index, doc] of docs.entries()) {
+          const result = fromFirestoreDoc(
+            doc as DocumentSnapshot<T>,
+            projection
+          );
+          if (
+            result &&
+            (!config.softDeleteEnabled ||
+              !(result as any)[config.getSoftDeleteKey()])
+          ) {
+            foundDocs.push(result);
+            foundIds.add(ids[index]);
+          }
         }
       }
 
+      const notFoundIds = ids.filter((id) => !foundIds.has(id));
       return [foundDocs, notFoundIds];
     },
 
