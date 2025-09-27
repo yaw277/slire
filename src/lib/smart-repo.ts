@@ -5,11 +5,7 @@ import {
   RepositoryConfig,
   UpdateOperation,
 } from './repo-config';
-
-// utility type to expand complex types for better IDE tooltips
-type Prettify<T> = {
-  [K in keyof T]: T[K];
-} & {};
+import { Prettify } from './types';
 
 // database-agnostic interface (limited to simple CRUD operations)
 export type SmartRepo<

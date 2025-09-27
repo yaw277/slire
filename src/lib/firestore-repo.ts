@@ -24,14 +24,10 @@ import {
   SmartRepo,
   Specification,
 } from './smart-repo';
+import { Prettify } from './types';
 
 // Firestore-specific constants
 const FIRESTORE_MAX_WRITES_PER_BATCH = 500;
-
-// utility type to expand complex types for better IDE tooltips
-type Prettify<T> = {
-  [K in keyof T]: T[K];
-} & {};
 
 // Firestore repository type with additional Firestore-specific helpers and transaction methods
 // Prettified to show expanded type in IDE tooltips instead of complex intersection

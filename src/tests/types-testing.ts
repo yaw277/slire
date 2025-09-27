@@ -1,10 +1,10 @@
 import { Collection } from 'mongodb';
 import {
   ManagedFields,
-  OptionalKeys,
   RepositoryConfig,
   UpdateOperation,
 } from '../lib/repo-config';
+import { OptionalKeys } from '../lib/types';
 
 type Prettify<T> = {
   [K in keyof T]: T[K];

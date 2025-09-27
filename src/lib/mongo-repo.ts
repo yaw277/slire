@@ -15,6 +15,7 @@ import {
   SmartRepo,
   Specification,
 } from './smart-repo';
+import { Prettify } from './types';
 
 // https://www.mongodb.com/resources/basics/databases/acid-transactions#:~:text=Limit%20each,1%2C000%20document%20modifications.
 const MONGODB_MAX_MODIFICATIONS_PER_TRANSACTION = 1000;
@@ -22,11 +23,6 @@ const MONGODB_MAX_MODIFICATIONS_PER_TRANSACTION = 1000;
 // no hard limit, however, it's recommended to limit the number as one might otherwise see performance issues
 // https://www.mongodb.com/docs/manual/reference/operator/query/in/#syntax
 const MONGODB_IN_OPERATOR_MAX_CLAUSES = 100;
-
-// utility type to expand complex types for better IDE tooltips
-type Prettify<T> = {
-  [K in keyof T]: T[K];
-} & {};
 
 // MongoDB repository type with additional MongoDB-specific helpers and transaction methods
 // Prettified to show expanded type in IDE tooltips instead of complex intersection
