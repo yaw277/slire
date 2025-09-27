@@ -3,10 +3,10 @@ import { Collection } from 'mongodb';
 import { v4 as uuidv4 } from 'uuid';
 import {
   combineSpecs,
+  CreateManyPartialFailure,
   createSmartMongoRepo,
   SmartRepo,
   Specification,
-  CreateManyPartialFailure,
 } from '../lib/smart-repo';
 import { mongo, setupMongo, teardownMongo } from './mongo-fixture';
 
@@ -576,7 +576,7 @@ describe('createSmartMongoRepo', function () {
       const entities = range(0, 3).map((i) =>
         createTestEntity({ name: `Entity ${i}` })
       );
-      const createdIds = await Promise.all(entities.map(repo.create));
+      const createdIds = await repo.createMany(entities);
 
       const requestedIds = [...createdIds, 'non-existent-1'];
       const [found, notFound] = await repo.getByIds(requestedIds, {

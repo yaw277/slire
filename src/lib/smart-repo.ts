@@ -159,8 +159,14 @@ export type SmartRepo<
     projection: P
   ): Promise<[Projected<T, P>[], string[]]>;
 
-  create(entity: Prettify<CreateInput>): Promise<string>;
-  createMany(entities: Prettify<CreateInput>[]): Promise<string[]>;
+  create(
+    entity: Prettify<CreateInput>,
+    options?: { mergeTrace?: any }
+  ): Promise<string>;
+  createMany(
+    entities: Prettify<CreateInput>[],
+    options?: { mergeTrace?: any }
+  ): Promise<string[]>;
 
   update(
     id: string,
@@ -730,12 +736,18 @@ export function createSmartMongoRepo<
       return [foundDocs, notFoundIds];
     },
 
-    create: async (entity: CreateInput): Promise<string> => {
-      const ids = await repo.createMany([entity]);
+    create: async (
+      entity: CreateInput,
+      options?: { mergeTrace?: any }
+    ): Promise<string> => {
+      const ids = await repo.createMany([entity], options);
       return ids[0];
     },
 
-    createMany: async (entities: CreateInput[]): Promise<string[]> => {
+    createMany: async (
+      entities: CreateInput[],
+      options?: { mergeTrace?: any }
+    ): Promise<string[]> => {
       if (entities.length < 1) {
         return [];
       }
@@ -760,9 +772,13 @@ export function createSmartMongoRepo<
         );
         const ops = batch.map((doc) => {
           const filter = applyConstraints(filterForDoc(doc));
-          const update: any = applyVersion(
+          const update: any = applyTrace(
             'create',
-            applyTimestamps('create', { $setOnInsert: doc })
+            applyVersion(
+              'create',
+              applyTimestamps('create', { $setOnInsert: doc })
+            ),
+            options?.mergeTrace
           );
           return { updateOne: { filter, update, upsert: true } } as any;
         });
