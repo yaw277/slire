@@ -331,25 +331,25 @@ Bulk version of `getById` that retrieves multiple entities by their IDs. Returns
 
 ### create
 
-`create(entity: CreateInput): Promise<string>`
+`create(entity: CreateInput, options?: { mergeTrace?: any }): Promise<string>`
 
-Creates a new entity in the repository. Returns the generated ID for the created entity. The repository automatically generates a unique ID, applies configured scope values, and generates all system-managed fields (timestamps, version). While `CreateInput` allows managed fields to be present in the input for convenience, system fields are ignored and scope fields are validated - the operation fails if provided scope values don't match the repository's configured scope.
+Creates a new entity in the repository. Returns the generated ID for the created entity. The repository automatically generates a unique ID, applies configured scope values, and generates all system-managed fields (timestamps, version, trace context if enabled). While `CreateInput` allows managed fields to be present in the input for convenience, system fields are ignored and scope fields are validated - the operation fails if provided scope values don't match the repository's configured scope. The optional `mergeTrace` parameter allows adding operation-specific trace context that gets merged with the repository's base trace context.
 
 Note: This method delegates to `createMany` internally and can therefore throw `CreateManyPartialFailure` under the same conditions (for a single-entity batch, see below).
 
 ### createMany
 
-`createMany(entities: CreateInput[]): Promise<string[]>`
+`createMany(entities: CreateInput[], options?: { mergeTrace?: any }): Promise<string[]>`
 
-Bulk version of `create` that creates multiple entities in a single operation. Returns an array of generated IDs corresponding to the created entities. The order of returned IDs matches the order of input entities. All entities are subject to the same automatic ID generation, scope validation, and consistency feature handling as the single `create` function.
+Bulk version of `create` that creates multiple entities in a single operation. Returns an array of generated IDs corresponding to the created entities. The order of returned IDs matches the order of input entities. All entities are subject to the same automatic ID generation, scope validation, and consistency feature handling (including trace context if enabled) as the single `create` function. The optional `mergeTrace` parameter allows adding operation-specific trace context that gets merged with the repository's base trace context and applied to all entities in the batch.
 
 Error handling and partial writes: The function performs a bulk upsert using `$setOnInsert` so existing documents are never silently updated. It generates IDs up front and, on success, returns them in the same order as the input entities. For large inputs, the operation runs in chunks to respect MongoDB limits. If a chunk cannot be fully inserted (for example, due to a duplicate key), the function throws `CreateManyPartialFailure`. This error reports the public IDs that were inserted up to the failure point (including prior chunks and the inserted subset of the failing chunk) and the public IDs that were not inserted (the non-inserted subset of the failing chunk plus all subsequent chunks that are skipped). This makes partial results explicit and allows callers to reconcile state or retry as needed. If you need atomicity, wrap the call in a transaction with `runTransaction`.
 
 ### update
 
-`update(id: string, update: UpdateOperation<UpdateInput>, options?: { includeSoftDeleted?: boolean }): Promise<void>`
+`update(id: string, update: UpdateOperation<UpdateInput>, options?: { includeSoftDeleted?: boolean; mergeTrace?: any }): Promise<void>`
 
-Updates a single entity identified by its ID. The update operation supports both `set` (to update fields) and `unset` (to remove optional fields) operations, which can be used individually or combined. The repository automatically applies scope filtering and excludes soft-deleted entities by default to ensure only active entities within the current scope can be updated. Use the `includeSoftDeleted: true` option to allow updating soft-deleted entities. Note that managed fields (scope properties, system fields like timestamps/version/id) cannot be modified through updates - the `UpdateOperation<UpdateInput>` type excludes these fields, ensuring type safety at compile time. Implementations should also perform runtime checks to ensure that managed fields are not tampered with. Any configured timestamps (like `updatedAt`) or versioning increments are applied automatically. No error is thrown if the entity doesn't exist or doesn't match the scope.
+Updates a single entity identified by its ID. The update operation supports both `set` (to update fields) and `unset` (to remove optional fields) operations, which can be used individually or combined. The repository automatically applies scope filtering and excludes soft-deleted entities by default to ensure only active entities within the current scope can be updated. Use the `includeSoftDeleted: true` option to allow updating soft-deleted entities. Note that managed fields (scope properties, system fields like timestamps/version/id/trace) cannot be modified through updates - the `UpdateOperation<UpdateInput>` type excludes these fields, ensuring type safety at compile time. Implementations should also perform runtime checks to ensure that managed fields are not tampered with. Any configured timestamps (like `updatedAt`), versioning increments, and trace context are applied automatically. The optional `mergeTrace` parameter allows adding operation-specific trace context. No error is thrown if the entity doesn't exist or doesn't match the scope.
 
 ### updateMany
 
@@ -413,9 +413,9 @@ The MongoDB implementation provides additional functionality beyond the core Sma
 
 ### createSmartMongoRepo
 
-`createSmartMongoRepo({ collection, mongoClient, scope?, options? }): MongoRepo<T, Scope, Entity>`
+`createSmartMongoRepo({ collection, mongoClient, scope?, traceContext?, options? }): MongoRepo<T, Scope, Entity>`
 
-Factory function that creates a MongoDB repository instance implementing the SmartRepo interface. Takes a MongoDB collection, client, optional scope for filtering, and configuration options for consistency features like timestamps, versioning, and soft delete. The function uses TypeScript generics to ensure type safety across all repository operations. The returned repository instance provides both the DB-agnostic SmartRepo interface and additional MongoDB-specific helpers (described in the following sections) for advanced operations.
+Factory function that creates a MongoDB repository instance implementing the SmartRepo interface. Takes a MongoDB collection, client, optional scope for filtering, optional trace context for audit logging, and configuration options for consistency features like timestamps, versioning, soft delete, and tracing. The function uses TypeScript generics to ensure type safety across all repository operations. The returned repository instance provides both the DB-agnostic SmartRepo interface and additional MongoDB-specific helpers (described in the following sections) for advanced operations.
 
 #### Scope
 
@@ -461,6 +461,44 @@ await repo.update(userId, {
 });
 ```
 
+#### Trace Context
+
+The `traceContext` parameter enables automatic audit trail functionality by attaching trace information to all write operations. When provided, the repository automatically embeds this context into documents during create, update, and soft delete operations, providing a foundation for operational debugging and audit logs.
+
+The trace context is completely flexible - define whatever fields are meaningful for your debugging and audit needs:
+
+```typescript
+// Basic trace context
+const repo = createSmartMongoRepo({
+  collection: expenseCollection,
+  mongoClient,
+  traceContext: { userId: 'john-doe', requestId: 'req-abc-123' },
+});
+
+await repo.create(expense);
+// Document includes: { ..., _trace: { userId: 'john-doe', requestId: 'req-abc-123', _op: 'create', _at: Date } }
+```
+
+**Operation-Level Trace Merging:**
+
+All write operations support merging additional trace context via the `mergeTrace` option:
+
+```typescript
+await repo.update(
+  expenseId,
+  { set: { status: 'approved' } },
+  { mergeTrace: { operation: 'approve-expense', approver: 'jane-doe' } }
+);
+// Results in: { userId: 'john-doe', requestId: 'req-abc-123', operation: 'approve-expense', approver: 'jane-doe', _op: 'update', _at: Date }
+```
+
+**Automatic Metadata:**
+
+The repository automatically adds operation metadata:
+
+- `_op`: The operation type ('create', 'update', 'delete')
+- `_at`: Timestamp when the trace was written
+
 #### Options
 
 The `options` parameter configures consistency features and repository behavior:
@@ -479,6 +517,37 @@ The `options` parameter configures consistency features and repository behavior:
 **`timestampKeys?: TimestampConfig<T>`** - Customizes timestamp field names. By default, uses `_createdAt`, `_updatedAt`, and `_deletedAt`. Provide an object like `{ createdAt: 'dateCreated', updatedAt: 'dateModified' }` to use custom field names that match your entity schema. You don't need to specify all keys - any unspecified keys will fall back to their default names. Note that the `deletedAt` key is only used when soft delete is enabled. When this option is provided, `traceTimestamps` is implicitly set to `true`, so there's no need to specify both options.
 
 **`version?: VersionConfig`** - Enables optimistic versioning. When `true`, uses the default `_version` field that increments on each update. Alternatively, provide a custom numeric field name from your entity type. Version increments happen automatically on all update operations, helping detect concurrent modifications.
+
+**`traceKey?: string`** - Customizes the field name used to store trace context in documents. Defaults to `_trace`. Use this to match your entity schema or avoid conflicts with existing fields. When using the default field name, it's automatically hidden from read results unless explicitly configured as an entity property.
+
+**`traceStrategy?: 'latest' | 'bounded'`** - Controls how trace information is stored. Defaults to `'latest'`.
+
+- **latest (default)**: Stores only the most recent trace context, overwriting previous traces with each operation
+- **bounded**: Maintains an array of recent traces, useful for tracking operation sequences on the same document
+
+**`traceLimit?: number`** - Maximum number of traces to retain when using `'bounded'` strategy. Required when `traceStrategy` is `'bounded'`. The repository automatically manages the array size, keeping only the most recent traces.
+
+```typescript
+// Latest strategy (default)
+const repo = createSmartMongoRepo({
+  collection,
+  mongoClient,
+  traceContext: { userId: 'john' },
+  // Document: { ..., _trace: { userId: 'john', _op: 'update', _at: Date } }
+});
+
+// Bounded strategy with history
+const auditRepo = createSmartMongoRepo({
+  collection,
+  mongoClient,
+  traceContext: { userId: 'john' },
+  options: {
+    traceStrategy: 'bounded',
+    traceLimit: 5,
+  },
+  // Document: { ..., _trace: [{ userId: 'john', _op: 'create', _at: Date1 }, { userId: 'jane', _op: 'update', _at: Date2 }] }
+});
+```
 
 **`session?: ClientSession`** - MongoDB session for transaction support. When provided, all repository operations will use this session, making them part of an existing transaction. Typically used internally by `withSession()` and `runTransaction()` methods rather than passed directly by users.
 
@@ -512,9 +581,22 @@ Helper method that applies the repository's scope filtering to a given filter ob
 
 ### buildUpdateOperation
 
-`buildUpdateOperation(update: UpdateOperation<UpdateInput>): any`
+`buildUpdateOperation(update: UpdateOperation<UpdateInput>, mergeTrace?: any): any`
 
-Helper method that transforms a repository update operation into a MongoDB-compliant update document with all configured consistency features applied. Takes an `UpdateOperation<UpdateInput>` with `set` and/or `unset` fields and automatically adds timestamps (like `updatedAt`), version increments, and any other configured repository features. Modification of system-managed fields is both prevented at compile time (type-level) and at runtime. This ensures that direct collection operations maintain the same consistency behavior as the repository's built-in update methods. Essential when performing direct `updateOne`, `updateMany`, or `bulkWrite` operations on the collection.
+Helper method that transforms a repository update operation into a MongoDB-compliant update document with all configured consistency features applied. Takes an `UpdateOperation<UpdateInput>` with `set` and/or `unset` fields and automatically adds timestamps (like `updatedAt`), version increments, trace context (if enabled), and any other configured repository features. The optional `mergeTrace` parameter allows adding operation-specific trace context that gets merged with the repository's base trace context. Modification of system-managed fields is both prevented at compile time (type-level) and at runtime. This ensures that direct collection operations maintain the same consistency behavior as the repository's built-in update methods. Essential when performing direct `updateOne`, `updateMany`, or `bulkWrite` operations on the collection.
+
+```typescript
+// Using buildUpdateOperation with trace context
+const updateOp = repo.buildUpdateOperation(
+  { set: { status: 'processed' } },
+  { operation: 'batch-process', jobId: 'job-123' }
+);
+
+await repo.collection.updateMany(
+  repo.applyConstraints({ isActive: true }),
+  updateOp
+);
+```
 
 ### When you need upsert
 
