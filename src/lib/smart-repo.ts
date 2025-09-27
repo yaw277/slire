@@ -27,9 +27,9 @@ type Projected<T, P extends Projection<T> | undefined> = Prettify<
 
 // timestamp configuration type
 type TimestampConfig<T> = {
-  createdAt?: keyof T;
-  updatedAt?: keyof T;
-  deletedAt?: keyof T;
+  createdAt?: DateKeys<T>;
+  updatedAt?: DateKeys<T>;
+  deletedAt?: DateKeys<T>;
 };
 
 // utility type to extract keys of properties that can be undefined
@@ -40,6 +40,15 @@ export type OptionalKeys<T> = {
 // utility type to extract keys of properties that are numbers
 type NumberKeys<T> = {
   [K in keyof T]: T[K] extends number ? K : never;
+}[keyof T];
+
+// utility type to extract keys of properties that are Dates
+type DateKeys<T> = {
+  [K in keyof T]: T[K] extends Date
+    ? K
+    : T[K] extends Date | undefined
+    ? K
+    : never;
 }[keyof T];
 
 export type UpdateOperation<T> =
