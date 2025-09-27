@@ -122,7 +122,10 @@ type MongoRepo<
       input: any,
       options?: { includeSoftDeleted?: boolean }
     ) => any;
-    buildUpdateOperation: (update: UpdateOperation<UpdateInput>) => any;
+    buildUpdateOperation: (
+      update: UpdateOperation<UpdateInput>,
+      mergeTrace?: any
+    ) => any;
     withSession(
       session: ClientSession
     ): MongoRepo<T, Scope, Config, Managed, UpdateInput, CreateInput>;
@@ -171,12 +174,12 @@ export type SmartRepo<
   update(
     id: string,
     update: UpdateOperation<Prettify<UpdateInput>>,
-    options?: { includeSoftDeleted?: boolean }
+    options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
   ): Promise<void>;
   updateMany(
     ids: string[],
     update: UpdateOperation<Prettify<UpdateInput>>,
-    options?: { includeSoftDeleted?: boolean }
+    options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
   ): Promise<void>;
 
   delete(id: string): Promise<void>;
@@ -660,7 +663,10 @@ export function createSmartMongoRepo<
   }
 
   // helper to build MongoDB update operation from set/unset
-  function buildUpdateOperation(update: UpdateOperation<UpdateInput>): any {
+  function buildUpdateOperation(
+    update: UpdateOperation<UpdateInput>,
+    mergeTrace?: any
+  ): any {
     const { set, unset } = update;
     const mongoUpdate: any = {}; // cast to any due to MongoDB's complex UpdateFilter type system
 
@@ -690,7 +696,11 @@ export function createSmartMongoRepo<
       }, {} as Record<string, string>);
     }
 
-    return applyVersion('update', applyTimestamps('update', mongoUpdate));
+    return applyTrace(
+      'update',
+      applyVersion('update', applyTimestamps('update', mongoUpdate)),
+      mergeTrace
+    );
   }
 
   // helper to add session to MongoDB operations when provided
@@ -823,7 +833,7 @@ export function createSmartMongoRepo<
     update: async (
       id: string,
       update: UpdateOperation<UpdateInput>,
-      options?: { includeSoftDeleted?: boolean }
+      options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
     ): Promise<void> => {
       await repo.updateMany([id], update as any, options);
     },
@@ -831,7 +841,7 @@ export function createSmartMongoRepo<
     updateMany: async (
       ids: string[],
       update: UpdateOperation<UpdateInput>,
-      options?: { includeSoftDeleted?: boolean }
+      options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
     ): Promise<void> => {
       if (ids.length < 1) {
         return;
@@ -841,7 +851,10 @@ export function createSmartMongoRepo<
       const chunks = chunk(ids, MONGODB_IN_OPERATOR_MAX_CLAUSES);
 
       for (const idChunk of chunks) {
-        const updateOperation = buildUpdateOperation(update);
+        const updateOperation = buildUpdateOperation(
+          update,
+          options?.mergeTrace
+        );
         await collection.updateMany(
           applyConstraints(idsFilter(idChunk), options),
           updateOperation,
