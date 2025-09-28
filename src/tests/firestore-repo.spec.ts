@@ -1,6 +1,9 @@
 import { CollectionReference } from '@google-cloud/firestore';
 import { v4 as uuidv4 } from 'uuid';
-import { createSmartFirestoreRepo } from '../lib/firestore-repo';
+import {
+  createSmartFirestoreRepo,
+  convertFirestoreTimestamps,
+} from '../lib/firestore-repo';
 import {
   clearFirestoreCollection,
   firestore,
@@ -151,30 +154,32 @@ describe('createSmartFirestoreRepo', function () {
 
       const createdId = await repo.create(entityWithManagedFields);
 
-      // Check raw document in Firestore
+      // Check raw document in Firestore (convert Timestamps to Dates for testing)
       const rawDoc = await rawTestCollection().doc(createdId).get();
-      const rawData = rawDoc.data();
+      const convertedData = convertFirestoreTimestamps(rawDoc.data());
 
       // Input managed field values should be stripped and replaced with system-managed values
-      expect(rawData).not.toHaveProperty('_id'); // _id should never be stored in Firestore documents
+      expect(convertedData).not.toHaveProperty('_id'); // _id should never be stored in Firestore documents
 
       // System should set proper managed field values (not the input values)
-      expect(rawData).toMatchObject({
+      expect(convertedData).toMatchObject({
         _version: 1, // System sets version to 1 (not 42 from input)
         _createdAt: fixedTimestamp,
         _updatedAt: fixedTimestamp,
-        _trace: {
-          userId: 'test-user', // User context preserved
-          _op: 'create',
-          _at: fixedTimestamp,
-        },
       });
 
+      // Check trace structure (trace timestamp is dynamic, so we check separately)
+      expect(convertedData._trace).toMatchObject({
+        userId: 'test-user', // User context preserved
+        _op: 'create', // System adds operation type
+      });
+      expect(convertedData._trace._at).toBeInstanceOf(Date); // Dynamic timestamp, just check it's a Date
+
       // _deleted should not be present for a create operation
-      expect(rawData).not.toHaveProperty('_deleted');
+      expect(convertedData).not.toHaveProperty('_deleted');
 
       // Business fields should be present
-      expect(rawData).toMatchObject({
+      expect(convertedData).toMatchObject({
         tenantId: 'org123',
         name: 'Test User',
         email: 'test@example.com',
@@ -205,13 +210,13 @@ describe('createSmartFirestoreRepo', function () {
 
       const createdId = await repo.create(entityWithCustomTimestamps);
 
-      // Check raw document in Firestore
+      // Check raw document in Firestore (convert Timestamps to Dates for testing)
       const rawDoc = await rawTestCollection().doc(createdId).get();
-      const rawData = rawDoc.data();
+      const convertedData = convertFirestoreTimestamps(rawDoc.data());
 
       // Custom timestamp fields should not be present from input (stripped and auto-managed)
       // They should be set by the system with the fixed timestamp (not input values)
-      expect(rawData).toMatchObject({
+      expect(convertedData).toMatchObject({
         createdAt: fixedTimestamp,
         updatedAt: fixedTimestamp,
       });

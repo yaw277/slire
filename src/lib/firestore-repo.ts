@@ -6,6 +6,7 @@ import {
   Firestore,
   Query,
   QueryDocumentSnapshot,
+  Timestamp,
   Transaction,
 } from '@google-cloud/firestore';
 import { chunk } from 'lodash-es';
@@ -264,7 +265,8 @@ export function createSmartFirestoreRepo<
       return null;
     }
 
-    const docData = doc.data()!;
+    const rawDocData = doc.data()!;
+    const docData = convertFirestoreTimestamps(rawDocData);
     const docId = doc.id;
 
     // if the projection is specified, only include id if it's in the projection
@@ -884,4 +886,40 @@ function deepFilterUndefined(obj: any): any {
     }
   }
   return filtered;
+}
+
+/**
+ * Recursively converts Firestore Timestamp objects to JavaScript Date objects.
+ * This maintains API consistency - users expect Date objects regardless of database.
+ */
+export function convertFirestoreTimestamps(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  // Convert Firestore Timestamp to Date
+  // Try both instanceof check and duck typing for compatibility
+  if (obj instanceof Timestamp) {
+    return obj.toDate();
+  }
+  if (obj.toDate && typeof obj.toDate === 'function') {
+    return obj.toDate();
+  }
+
+  // Handle arrays
+  if (Array.isArray(obj)) {
+    return obj.map(convertFirestoreTimestamps);
+  }
+
+  // Handle objects
+  if (typeof obj === 'object') {
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = convertFirestoreTimestamps(value);
+    }
+    return result;
+  }
+
+  // Primitives
+  return obj;
 }
