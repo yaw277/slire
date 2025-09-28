@@ -1263,6 +1263,243 @@ describe('createSmartFirestoreRepo', function () {
       expect(count).toBe(1);
     });
   });
+
+  describe('scoping', () => {
+    it('scoped repo only has access to entities matching the scope', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      const scopedRepo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+      });
+
+      const [, , notAcmeId] = await repo.createMany([
+        createTestEntity({ name: 'User 1', tenantId: 'acme' }),
+        createTestEntity({ name: 'User 2', tenantId: 'acme' }),
+        createTestEntity({ name: 'User 3', tenantId: 'not-acme' }),
+      ]);
+
+      const notAcme = await scopedRepo.getById(notAcmeId);
+      expect(notAcme).toBeNull();
+
+      const acmeUsers = await scopedRepo.find({});
+      expect(acmeUsers).toHaveLength(2);
+      acmeUsers.forEach((user) => {
+        expect(user.tenantId).toBe('acme');
+      });
+
+      const count = await scopedRepo.count({});
+      expect(count).toBe(2);
+    });
+
+    it('adds scope when creating entities', async () => {
+      const scopedRepo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+      });
+
+      const id = await scopedRepo.create(omit(createTestEntity(), 'tenantId'));
+      const moreIds = await scopedRepo.createMany(
+        range(0, 2).map((_) => omit(createTestEntity(), 'tenantId'))
+      );
+
+      const result = await scopedRepo.getByIds([id, ...moreIds], {
+        tenantId: true,
+      });
+
+      expect(result).toEqual([
+        [{ tenantId: 'acme' }, { tenantId: 'acme' }, { tenantId: 'acme' }],
+        [],
+      ]);
+    });
+
+    it('should validate scope property values during create', async () => {
+      const scopedRepo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+      });
+
+      // this should work (matching scope value)
+      const validEntity = createTestEntity({
+        name: 'Valid User',
+        tenantId: 'acme', // matches scope
+      });
+      await scopedRepo.create(validEntity);
+
+      // this should also work (no scope property - will be added automatically)
+      const { tenantId, ...entityWithoutScope } = createTestEntity({
+        name: 'Valid User No Scope',
+      });
+      await scopedRepo.create(entityWithoutScope);
+
+      // this should fail - wrong scope value
+      const invalidEntity = createTestEntity({
+        name: 'Invalid User',
+        tenantId: 'not-acme', // doesn't match scope
+      });
+      await expect(scopedRepo.create(invalidEntity)).rejects.toThrow(
+        "Cannot create entity: scope property 'tenantId' must be 'acme', got 'not-acme'"
+      );
+    });
+
+    it('should prevent updating scope properties', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const scopedRepo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+      });
+
+      const entity = createTestEntity({ name: 'Test User', tenantId: 'acme' });
+      const id = await repo.create(entity);
+
+      // this should work (no scope property)
+      await scopedRepo.update(id, { set: { name: 'Updated Name' } });
+
+      // this should fail at runtime (scope property in set)
+      await expect(
+        scopedRepo.update(id, { set: { tenantId: 'not-acme' } } as any)
+      ).rejects.toThrow('Cannot update readonly properties: tenantId');
+
+      // this should fail at runtime (scope property in set even if it matches scope)
+      await expect(
+        scopedRepo.update(id, { set: { tenantId: 'acme' } } as any)
+      ).rejects.toThrow('Cannot update readonly properties: tenantId');
+
+      // this should fail at runtime (scope property in unset)
+      await expect(
+        scopedRepo.update(id, { unset: ['tenantId'] } as any)
+      ).rejects.toThrow('Cannot unset readonly properties: tenantId');
+    });
+
+    it('should allow reading scope properties', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      const scopedRepo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+      });
+
+      await repo.createMany([
+        createTestEntity({ name: 'Active User 1', tenantId: 'acme' }),
+        createTestEntity({ name: 'Active User 2', tenantId: 'acme' }),
+        createTestEntity({ name: 'Inactive User', tenantId: 'not-acme' }),
+      ]);
+
+      // should be able to query by scope properties (event though it's pointless)
+      const activeUsers = await scopedRepo.find({ tenantId: 'acme' });
+      expect(activeUsers).toHaveLength(2);
+
+      // never returns entities out of scope (even if filter says so)
+      expect(await scopedRepo.find({ tenantId: 'not-acme' })).toHaveLength(0);
+
+      // should be able to project scope properties
+      const projectedUsers = await scopedRepo.find(
+        {},
+        { tenantId: true, name: true }
+      );
+      expect(projectedUsers).toHaveLength(2);
+      projectedUsers.forEach((user) => {
+        expect(user).toHaveProperty('tenantId');
+        expect(user).toHaveProperty('name');
+        expect(user).not.toHaveProperty('email');
+      });
+    });
+
+    it('supports multi-property scope', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      const scopedRepo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme', age: 30 },
+      });
+
+      const [, id2, id3] = await repo.createMany([
+        // in scope
+        createTestEntity({ name: 'Match 1', tenantId: 'acme', age: 30 }),
+        // out of scope: wrong age
+        createTestEntity({ name: 'Wrong age', tenantId: 'acme', age: 31 }),
+        // out of scope: wrong tenant
+        createTestEntity({
+          name: 'Wrong tenant',
+          tenantId: 'not-acme',
+          age: 30,
+        }),
+        // in scope
+        createTestEntity({ name: 'Match 2', tenantId: 'acme', age: 30 }),
+      ]);
+
+      // entities not matching full scope should not be accessible
+      expect(await scopedRepo.getById(id2)).toBeNull();
+      expect(await scopedRepo.getById(id3)).toBeNull();
+
+      // only entities matching all scope properties are visible
+      const results = await scopedRepo.find({});
+      expect(results).toHaveLength(2);
+      results.forEach((user) => {
+        expect(user.tenantId).toBe('acme');
+        expect(user.isActive).toBe(true);
+        expect(user.age).toBe(30);
+      });
+
+      const count = await scopedRepo.count({});
+      expect(count).toBe(2);
+    });
+
+    it('treats empty scope as no scope', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      const emptyScopedRepo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        scope: {},
+      });
+
+      const [id1, id2] = await repo.createMany([
+        createTestEntity({ name: 'U1', tenantId: 'acme', age: 30 }),
+        createTestEntity({ name: 'U2', tenantId: 'not-acme', age: 31 }),
+        createTestEntity({ name: 'U3', tenantId: 'acme', age: 32 }),
+      ]);
+
+      // empty scope should not filter results
+      const allFromEmptyScope = await emptyScopedRepo.find({});
+      expect(allFromEmptyScope.map((u) => u.name).sort()).toEqual([
+        'U1',
+        'U2',
+        'U3',
+      ]);
+      expect(await emptyScopedRepo.count({})).toBe(3);
+
+      // access by id should work for any entity
+      expect(await emptyScopedRepo.getById(id2)).not.toBeNull();
+
+      // updates should not have readonly restrictions (since there is no scope)
+      await emptyScopedRepo.update(id1, { set: { tenantId: 'changed' } });
+      expect(await emptyScopedRepo.getById(id1, { tenantId: true })).toEqual({
+        tenantId: 'changed',
+      });
+    });
+  });
 });
 
 // Test Entity type and helper function (same as MongoDB tests)

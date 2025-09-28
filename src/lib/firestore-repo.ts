@@ -426,6 +426,11 @@ export function createSmartFirestoreRepo<
 
       const result = fromFirestoreDoc(doc, projection);
 
+      // Apply client-side scope filtering (for synced mode where we bypass applyConstraints)
+      if (result && config.scopeBreach(result)) {
+        return null; // Document doesn't match scope
+      }
+
       // Apply soft delete filtering if not included
       if (
         result &&
@@ -483,6 +488,7 @@ export function createSmartFirestoreRepo<
           );
           if (
             result &&
+            !config.scopeBreach(result) &&
             (!config.softDeleteEnabled || !(result as any)[SOFT_DELETE_KEY])
           ) {
             foundDocs.push(result);
