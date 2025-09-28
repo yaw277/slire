@@ -444,7 +444,7 @@ export function createSmartFirestoreRepo<
 
       if (isDetachedIdentity) {
         // In detached mode, query by the id field (batch queries due to Firestore 'in' limit of 10)
-        const batches = chunk(ids, 10); // Firestore 'in' operator limit
+        const batches = chunk(ids, 10); // Firestore 'in' operator limit (newer SDK versions allow 30)
 
         for (const batch of batches) {
           const query = applyConstraints(collection.where('id', 'in', batch));
