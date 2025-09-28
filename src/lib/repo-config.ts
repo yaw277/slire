@@ -226,7 +226,7 @@ export function repoConfig<T extends { id: string }>(
       // Use configured timestamp strategy or fallback to new Date()
       let timestamp: any;
       if (effectiveTraceTimestamps === 'server') {
-        timestamp = serverTimestamp || new Date(); // Use server timestamp if provided
+        timestamp = serverTimestamp;
       } else if (typeof effectiveTraceTimestamps === 'function') {
         timestamp = effectiveTraceTimestamps();
       } else {
@@ -236,7 +236,7 @@ export function repoConfig<T extends { id: string }>(
       return {
         ...context,
         _op: op,
-        _at: timestamp,
+        ...(timestamp ? { _at: timestamp } : {}),
       };
     },
 

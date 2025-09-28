@@ -251,22 +251,39 @@ export function createSmartMongoRepo<
 
     const traceStrategy = config.getTraceStrategy();
     const traceKey = config.getTraceKey();
+    const needsServerTimestamp =
+      !traceValue._at && config.shouldUseServerTimestamp();
 
     if (traceStrategy === 'latest') {
-      return {
+      const result = {
         ...mongoUpdate,
         $set: {
           ...(mongoUpdate.$set ?? {}),
           [traceKey]: traceValue,
         },
       };
+
+      // Add server timestamp for _at field if needed
+      if (needsServerTimestamp) {
+        result.$currentDate = {
+          ...(mongoUpdate.$currentDate ?? {}),
+          [`${traceKey}._at`]: true,
+        };
+      }
+
+      return result;
     } else if (traceStrategy === 'bounded') {
+      // For bounded strategy with server timestamps, add client timestamp to avoid complexity
+      const finalTraceValue = needsServerTimestamp
+        ? { ...traceValue, _at: new Date() }
+        : traceValue;
+
       return {
         ...mongoUpdate,
         $push: {
           ...(mongoUpdate.$push ?? {}),
           [traceKey]: {
-            $each: [traceValue],
+            $each: [finalTraceValue],
             $slice: -(config.getTraceLimit() as number),
           },
         },
