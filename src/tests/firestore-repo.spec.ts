@@ -929,6 +929,87 @@ describe('createSmartFirestoreRepo', function () {
       expect(found.every((e) => e.isActive === false)).toBe(true);
     });
   });
+
+  describe('delete', () => {
+    it('should delete an existing entity', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const entity = createTestEntity({ name: 'To Delete' });
+
+      const createdId = await repo.create(entity);
+
+      await repo.delete(createdId);
+
+      const deleted = await repo.getById(createdId);
+      expect(deleted).toBeNull();
+    });
+
+    it('should not throw on non-existent entities', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      await repo.delete('non-existent-id');
+    });
+  });
+
+  describe('deleteMany', () => {
+    it('should delete multiple entities', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const entities = range(0, 5).map((i) =>
+        createTestEntity({ name: `Entity ${i}` })
+      );
+
+      const createdIds = await repo.createMany(entities);
+
+      await repo.deleteMany(createdIds);
+
+      const [found, notFound] = await repo.getByIds(createdIds);
+
+      expect([found.length, notFound.length]).toEqual([0, 5]);
+    });
+
+    it('should handle large batches with chunking', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const entities = range(0, 150).map((i) =>
+        createTestEntity({ name: `Entity ${i}` })
+      );
+
+      const createdIds = await repo.createMany(entities);
+
+      await repo.deleteMany(createdIds);
+
+      const [found, notFound] = await repo.getByIds(createdIds);
+
+      expect([found.length, notFound.length]).toEqual([0, 150]);
+    });
+
+    it('should handle mixed existing and non-existing ids', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const entity = createTestEntity({ name: 'Test Entity' });
+      const createdId = await repo.create(entity);
+
+      const ids = [createdId, 'non-existent-1', 'non-existent-2'];
+
+      // this should not throw an error
+      await repo.deleteMany(ids);
+
+      // verify the existing entity was deleted
+      const deleted = await repo.getById(createdId);
+      expect(deleted).toBeNull();
+    });
+  });
 });
 
 // Test Entity type and helper function (same as MongoDB tests)
