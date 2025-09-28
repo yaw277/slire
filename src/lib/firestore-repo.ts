@@ -124,7 +124,8 @@ export function createSmartFirestoreRepo<
 
   const getDocRef = (id: string): DocumentReference<T> => collection.doc(id);
 
-  const SOFT_DELETE_MARK = { [config.getSoftDeleteKey()]: true };
+  const SOFT_DELETE_KEY = config.getSoftDeleteKey();
+  const SOFT_DELETE_MARK = { [SOFT_DELETE_KEY]: true };
 
   // Get timestamp keys from config
   const timestampKeys = config.getTimestampKeys();
@@ -415,7 +416,7 @@ export function createSmartFirestoreRepo<
       if (
         result &&
         config.softDeleteEnabled &&
-        !(result as any)[config.getSoftDeleteKey()]
+        !(result as any)[SOFT_DELETE_KEY]
       ) {
         return result;
       } else if (result && config.softDeleteEnabled) {
@@ -468,8 +469,7 @@ export function createSmartFirestoreRepo<
           );
           if (
             result &&
-            (!config.softDeleteEnabled ||
-              !(result as any)[config.getSoftDeleteKey()])
+            (!config.softDeleteEnabled || !(result as any)[SOFT_DELETE_KEY])
           ) {
             foundDocs.push(result);
             foundIds.add(ids[index]);
@@ -595,7 +595,7 @@ export function createSmartFirestoreRepo<
               if (
                 config.softDeleteEnabled &&
                 !options?.includeSoftDeleted &&
-                docData[config.getSoftDeleteKey()]
+                docData[SOFT_DELETE_KEY]
               ) {
                 continue; // Skip soft-deleted documents
               }
@@ -617,7 +617,7 @@ export function createSmartFirestoreRepo<
               if (
                 config.softDeleteEnabled &&
                 !options?.includeSoftDeleted &&
-                docData[config.getSoftDeleteKey()]
+                docData[SOFT_DELETE_KEY]
               ) {
                 continue; // Skip soft-deleted documents
               }
@@ -713,8 +713,10 @@ export function createSmartFirestoreRepo<
           // Client-side soft delete filtering (since Firestore can't do server-side filtering)
           if (config.softDeleteEnabled) {
             const docData = doc.data();
-            const softDeleteKey = config.getSoftDeleteKey();
-            if (softDeleteKey in docData && (docData as any)[softDeleteKey]) {
+            if (
+              SOFT_DELETE_KEY in docData &&
+              (docData as any)[SOFT_DELETE_KEY]
+            ) {
               continue; // Skip soft deleted document
             }
           }
@@ -757,11 +759,12 @@ export function createSmartFirestoreRepo<
       }
 
       let count = 0;
-      const softDeleteKey = config.getSoftDeleteKey();
       for (const doc of snapshot.docs) {
         const docData = doc.data();
         // Only count documents that are not soft deleted
-        if (!(softDeleteKey in docData && (docData as any)[softDeleteKey])) {
+        if (
+          !(SOFT_DELETE_KEY in docData && (docData as any)[SOFT_DELETE_KEY])
+        ) {
           count++;
         }
       }
