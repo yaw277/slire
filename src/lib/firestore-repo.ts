@@ -214,7 +214,11 @@ export function createSmartFirestoreRepo<
       return firestoreUpdate;
     }
 
-    const traceValue = config.buildTraceContext(op, contextOverride);
+    const traceValue = config.buildTraceContext(
+      op,
+      contextOverride,
+      FieldValue.serverTimestamp()
+    );
     if (!traceValue) {
       return firestoreUpdate;
     }

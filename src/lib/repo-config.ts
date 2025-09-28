@@ -210,7 +210,11 @@ export function repoConfig<T extends { id: string }>(
       return HIDDEN_META_KEYS.has(fieldName);
     },
 
-    buildTraceContext: (op: WriteOp, mergeContext?: any): any => {
+    buildTraceContext: (
+      op: WriteOp,
+      mergeContext?: any,
+      serverTimestamp?: any
+    ): any => {
       if (!traceEnabled) return undefined;
 
       const context = mergeContext
@@ -220,15 +224,13 @@ export function repoConfig<T extends { id: string }>(
       if (!context) return undefined;
 
       // Use configured timestamp strategy or fallback to new Date()
-      let timestamp: Date;
-      if (!effectiveTraceTimestamps) {
-        timestamp = new Date();
-      } else if (effectiveTraceTimestamps === true) {
-        timestamp = new Date();
+      let timestamp: any;
+      if (effectiveTraceTimestamps === 'server') {
+        timestamp = serverTimestamp || new Date(); // Use server timestamp if provided
       } else if (typeof effectiveTraceTimestamps === 'function') {
         timestamp = effectiveTraceTimestamps();
       } else {
-        timestamp = new Date();
+        timestamp = new Date(); // Default for true, falsy, or any other value
       }
 
       return {
