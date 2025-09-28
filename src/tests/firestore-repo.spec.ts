@@ -1,5 +1,5 @@
 import { CollectionReference } from '@google-cloud/firestore';
-import { range } from 'lodash-es';
+import { omit, range } from 'lodash-es';
 import { v4 as uuidv4 } from 'uuid';
 import {
   createSmartFirestoreRepo,
@@ -617,6 +617,291 @@ describe('createSmartFirestoreRepo', function () {
       }
 
       expect([found.length, notFound]).toEqual([3, ['non-existent-1']]);
+    });
+  });
+
+  describe('update', () => {
+    it('should update an existing entity', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const entity = createTestEntity({ name: 'Original Name' });
+
+      const createdId = await repo.create(entity);
+
+      await repo.update(createdId, { set: { name: 'Updated Name', age: 35 } });
+
+      const updated = await repo.getById(createdId);
+      expect(updated).toEqual({
+        id: createdId,
+        tenantId: entity.tenantId,
+        name: 'Updated Name',
+        email: 'test@example.com',
+        age: 35,
+        isActive: true,
+        metadata: entity.metadata,
+      });
+    });
+
+    it('should unset fields when specified', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      const entity = createTestEntity({
+        name: 'Test Entity',
+        metadata: { tags: ['tag1'], notes: 'Test notes' },
+      });
+
+      const createdId = await repo.create(entity);
+
+      await repo.update(createdId, { unset: ['metadata'] });
+
+      const updated = await repo.getById(createdId);
+
+      expect(updated).toEqual({
+        ...omit(entity, 'metadata'),
+        id: createdId,
+      });
+    });
+
+    it('should handle set and unset in the same operation', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const entity = createTestEntity({
+        name: 'Original Name',
+        metadata: { tags: ['old'], notes: 'Old notes' },
+      });
+
+      const createdId = await repo.create(entity);
+
+      await repo.update(createdId, {
+        set: { name: 'New Name', age: 40 },
+        unset: ['metadata'],
+      });
+
+      const updated = await repo.getById(createdId);
+
+      expect(updated).toEqual({
+        id: createdId,
+        tenantId: entity.tenantId,
+        name: 'New Name',
+        email: 'test@example.com',
+        age: 40,
+        isActive: true,
+      });
+    });
+
+    it('should only allow unsetting properties that can be undefined (type safety)', async () => {
+      type EntityWithUndefinedField = TestEntity & {
+        description: string | undefined;
+      };
+
+      const repo = createSmartFirestoreRepo({
+        collection:
+          testCollection() as unknown as CollectionReference<EntityWithUndefinedField>,
+        firestore: firestore.firestore,
+      });
+
+      const entityData = {
+        ...createTestEntity(),
+        description: 'test description' as string | undefined,
+      };
+
+      const createdId = await repo.create(entityData);
+
+      // Both optional properties should be allowed to unset
+      await repo.update(createdId, {
+        unset: ['description', 'metadata'],
+      });
+
+      // The following would cause TypeScript compile errors (commented out to avoid build failure):
+      // await repo.update(createdId, { unset: ['name'] });
+      // await repo.update(createdId, { unset: ['email'] });
+      // await repo.update(createdId, { unset: ['age'] });
+      // await repo.update(createdId, { unset: ['isActive'] });
+      // await repo.update(createdId, { unset: ['organizationId'] });
+      // await repo.update(createdId, { unset: ['name'] });
+
+      const updated = await repo.getById(createdId);
+      expect(updated).not.toHaveProperty('description');
+      expect(updated).not.toHaveProperty('metadata');
+    });
+
+    it('should not affect non-existent entities', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      // this should not throw an error
+      await repo.update('non-existent-id', { set: { name: 'New Name' } });
+
+      // verify no entity was created
+      const retrieved = await repo.getById('non-existent-id');
+      expect(retrieved).toBeNull();
+
+      const matched = await repo.find({ name: 'New Name' });
+      expect(matched).toHaveLength(0);
+    });
+
+    it('should recursively filter undefined properties in set operations (not store as null)', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      // First create an entity
+      const initialEntity = createTestEntity({ name: 'Initial Name' });
+      const createdId = await repo.create(initialEntity);
+
+      // Update with nested undefined properties
+      await repo.update(createdId, {
+        set: {
+          name: 'Updated Name',
+          metadata: {
+            tags: ['updated'],
+            notes: undefined, // Should be filtered out
+            nested: {
+              field1: 'updated-value1',
+              field2: undefined, // Should be filtered out
+              field3: null, // Should be preserved as null
+              deep: {
+                level3: 'updated',
+                level3undefined: undefined, // Should be filtered out
+              },
+            },
+          } as any, // Cast to allow nested property for testing
+          // Root level undefined in set operation
+          age: undefined as any, // Should be filtered out
+        },
+      });
+
+      // Check what actually got stored in Firestore
+      const rawDoc = await rawTestCollection().doc(createdId).get();
+      const rawData = convertFirestoreTimestamps(rawDoc.data()!);
+
+      // Verify undefined fields in nested objects are absent (not null)
+      // Note: age remains from original entity since undefined was filtered from set operation
+      expect(rawData?.age).toBe(30); // Original value remains
+      expect(rawData?.metadata).not.toHaveProperty('notes');
+      expect(rawData?.metadata?.nested).not.toHaveProperty('field2');
+      expect(rawData?.metadata?.nested?.deep).not.toHaveProperty(
+        'level3undefined'
+      );
+
+      // Verify null fields are preserved as null
+      expect(rawData?.metadata?.nested?.field3).toBe(null);
+
+      // Verify defined fields are present and updated
+      expect(rawData?.name).toBe('Updated Name');
+      expect(rawData?.metadata?.tags).toEqual(['updated']);
+      expect(rawData?.metadata?.nested?.field1).toBe('updated-value1');
+      expect(rawData?.metadata?.nested?.deep?.level3).toBe('updated');
+    });
+
+    it('should update existing entity in scoped collection', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+      });
+
+      const id = await repo.create(
+        createTestEntity({ tenantId: 'acme', name: 'Original Name' })
+      );
+
+      await repo.update(id, { set: { name: 'Updated Name' } });
+
+      const updated = await repo.getById(id, { name: true });
+
+      expect(updated).toEqual({ name: 'Updated Name' });
+    });
+
+    it('should reject update that attempts to change scope', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+      });
+
+      const id = await repo.create(
+        createTestEntity({ tenantId: 'acme', name: 'Original Name' })
+      );
+
+      await expect(
+        repo.update(id, {
+          set: { tenantId: 'foo', name: 'Updated Name' } as any,
+        })
+      ).rejects.toThrow('Cannot update readonly properties: tenantId');
+
+      expect(await repo.getById(id, { tenantId: true, name: true })).toEqual({
+        tenantId: 'acme',
+        name: 'Original Name',
+      });
+    });
+
+    it('should reject update that attempts to set managed fields', async () => {
+      type EntityWithManagedFields = TestEntity & {
+        _v: number;
+        _createdAt: Date;
+      };
+      const repo = createSmartFirestoreRepo({
+        collection:
+          testCollection() as unknown as CollectionReference<EntityWithManagedFields>,
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+        options: { version: '_v', timestampKeys: { createdAt: '_createdAt' } },
+      });
+
+      const id = await repo.create(
+        createTestEntity({ tenantId: 'acme', name: 'Original Name' })
+      );
+
+      await expect(
+        repo.update(id, {
+          set: { _v: 47, name: 'Updated Name' } as any,
+          unset: ['_createdAt'] as any,
+        })
+      ).rejects.toThrow('Cannot update readonly properties: _v');
+
+      expect(await repo.getById(id, { tenantId: true, name: true })).toEqual({
+        tenantId: 'acme',
+        name: 'Original Name',
+      });
+    });
+
+    it('should reject update that attempts to unset managed fields', async () => {
+      type EntityWithManagedFields = TestEntity & {
+        _v: number;
+        _createdAt: Date;
+      };
+      const repo = createSmartFirestoreRepo({
+        collection:
+          rawTestCollection() as CollectionReference<EntityWithManagedFields>,
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+        options: { version: '_v', timestampKeys: { createdAt: '_createdAt' } },
+      });
+
+      const id = await repo.create(
+        createTestEntity({ tenantId: 'acme', name: 'Original Name' })
+      );
+
+      await expect(
+        repo.update(id, {
+          set: { name: 'Updated Name' },
+          unset: ['_createdAt'] as any,
+        })
+      ).rejects.toThrow('Cannot unset readonly properties: _createdAt');
+
+      expect(await repo.getById(id, { tenantId: true, name: true })).toEqual({
+        tenantId: 'acme',
+        name: 'Original Name',
+      });
     });
   });
 });
