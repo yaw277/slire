@@ -1120,6 +1120,44 @@ describe('createSmartFirestoreRepo', function () {
       expect(results).toHaveLength(0);
     });
   });
+
+  describe('count', () => {
+    it('should count entities matching the filter', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      await repo.createMany([
+        createTestEntity({ name: 'Alice', age: 25, isActive: true }),
+        createTestEntity({ name: 'Bob', age: 30, isActive: true }),
+        createTestEntity({ name: 'Charlie', age: 35, isActive: false }),
+        createTestEntity({ name: 'David', age: 40, isActive: true }),
+      ]);
+
+      const totalCount = await repo.count({});
+      expect(totalCount).toBe(4);
+
+      const activeCount = await repo.count({ isActive: true });
+      expect(activeCount).toBe(3);
+
+      const age25Count = await repo.count({ age: 25 });
+      expect(age25Count).toBe(1);
+    });
+
+    it('should return 0 when no entities match', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      const entity = createTestEntity({ name: 'Test Entity' });
+      await repo.create(entity);
+
+      const count = await repo.count({ name: 'Non-existent' });
+      expect(count).toBe(0);
+    });
+  });
 });
 
 // Test Entity type and helper function (same as MongoDB tests)
