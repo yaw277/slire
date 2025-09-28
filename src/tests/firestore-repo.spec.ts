@@ -1,4 +1,5 @@
 import { CollectionReference } from '@google-cloud/firestore';
+import { range } from 'lodash-es';
 import { v4 as uuidv4 } from 'uuid';
 import {
   createSmartFirestoreRepo,
@@ -485,6 +486,137 @@ describe('createSmartFirestoreRepo', function () {
           throw e;
         }
       }
+    });
+  });
+
+  describe('getById', () => {
+    it('should return the entity when it exists', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const entity = createTestEntity({ name: 'Test Entity' });
+
+      const createdId = await repo.create(entity);
+      const retrieved = await repo.getById(createdId);
+
+      expect(retrieved).toEqual({
+        id: createdId,
+        tenantId: entity.tenantId,
+        name: 'Test Entity',
+        email: 'test@example.com',
+        age: 30,
+        isActive: true,
+        metadata: entity.metadata,
+      });
+    });
+
+    it('should return null when entity does not exist', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const retrieved = await repo.getById('non-existent-id');
+      expect(retrieved).toBeNull();
+    });
+
+    it('should support projections', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const entity = createTestEntity({ name: 'Projection Test' });
+
+      const createdId = await repo.create(entity);
+
+      // test projection with specific fields
+      const retrieved = await repo.getById(createdId, {
+        name: true,
+        email: true,
+      });
+
+      expect(retrieved).toEqual({
+        name: 'Projection Test',
+        email: 'test@example.com',
+      });
+    });
+  });
+
+  describe('getByIds', () => {
+    it('should return entities that exist and ids that do not exist', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const entities = range(0, 5).map((i) =>
+        createTestEntity({ name: `Entity ${i}` })
+      );
+      const createdIds: string[] = [];
+
+      for (const entity of entities) {
+        const createdId = await repo.create(entity);
+        createdIds.push(createdId);
+      }
+
+      const requestedIds = [
+        ...createdIds.slice(0, 3),
+        'non-existent-1',
+        'non-existent-2',
+      ];
+      const [found, notFound] = await repo.getByIds(requestedIds);
+
+      expect(found).toHaveLength(3);
+      expect(notFound).toHaveLength(2);
+      expect(notFound).toEqual(
+        expect.arrayContaining(['non-existent-1', 'non-existent-2'])
+      );
+
+      // check that all expected entities are found, regardless of order
+      const expectedNames = ['Entity 0', 'Entity 1', 'Entity 2'];
+      const foundNames = found.map((entity) => entity.name);
+      expect(foundNames).toEqual(expect.arrayContaining(expectedNames));
+    });
+
+    it('should return empty arrays when no entities exist', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const [found, notFound] = await repo.getByIds(['id1', 'id2', 'id3']);
+
+      expect([found, notFound]).toEqual([[], ['id1', 'id2', 'id3']]);
+    });
+
+    it('should support projections', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const entities = range(0, 3).map((i) =>
+        createTestEntity({ name: `Entity ${i}` })
+      );
+      const createdIds = await repo.createMany(entities);
+
+      const requestedIds = [...createdIds, 'non-existent-1'];
+      const [found, notFound] = await repo.getByIds(requestedIds, {
+        name: true,
+        email: true,
+      });
+
+      // check that all found entities have only the projected fields, regardless of order
+      const expectedNames = ['Entity 0', 'Entity 1', 'Entity 2'];
+      const foundNames = found.map((entity) => entity.name);
+      expect(foundNames).toEqual(expect.arrayContaining(expectedNames));
+
+      // verify all entities have the correct structure
+      for (const entity of found) {
+        expect(entity).toEqual({
+          name: entity.name,
+          email: 'test@example.com',
+        });
+      }
+
+      expect([found.length, notFound]).toEqual([3, ['non-existent-1']]);
     });
   });
 });
