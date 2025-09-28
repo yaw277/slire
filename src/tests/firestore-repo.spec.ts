@@ -1,5 +1,5 @@
 import { CollectionReference } from '@google-cloud/firestore';
-import { omit, range } from 'lodash-es';
+import { omit, range, sortBy } from 'lodash-es';
 import { v4 as uuidv4 } from 'uuid';
 import {
   createSmartFirestoreRepo,
@@ -1008,6 +1008,116 @@ describe('createSmartFirestoreRepo', function () {
       // verify the existing entity was deleted
       const deleted = await repo.getById(createdId);
       expect(deleted).toBeNull();
+    });
+  });
+
+  describe('find', () => {
+    it('should find entities matching the filter', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      await repo.createMany([
+        createTestEntity({ name: 'Alice', age: 25, isActive: true }),
+        createTestEntity({ name: 'Bob', age: 30, isActive: true }),
+        createTestEntity({ name: 'Charlie', age: 35, isActive: false }),
+        createTestEntity({ name: 'David', age: 40, isActive: true }),
+      ]);
+
+      const activeUsers = await repo.find({ isActive: true });
+      expect(activeUsers).toHaveLength(3);
+      activeUsers.forEach((user) => {
+        expect(user.isActive).toBe(true);
+      });
+
+      const youngUsers = await repo.find({ age: 25 }); // exact match only
+      expect(youngUsers).toHaveLength(1);
+      expect(youngUsers[0].name).toBe('Alice');
+    });
+
+    it('should return all entities if filter is empty', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      await repo.createMany([
+        createTestEntity({ name: 'Alice', age: 25, isActive: true }),
+        createTestEntity({ name: 'Bob', age: 30, isActive: true }),
+        createTestEntity({ name: 'Charlie', age: 35, isActive: false }),
+        createTestEntity({ name: 'David', age: 40, isActive: true }),
+      ]);
+
+      const all = await repo.find({});
+      expect(all).toHaveLength(4);
+    });
+
+    it('should return empty array when no entities match', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const entity = createTestEntity({ name: 'Test Entity' });
+      await repo.create(entity);
+
+      const results = await repo.find({ name: 'Non-existent' });
+      expect(results).toHaveLength(0);
+    });
+
+    it('should support projections', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      await repo.createMany([
+        createTestEntity({ name: 'Alice', age: 25, isActive: true }),
+        createTestEntity({ name: 'Bob', age: 30, isActive: true }),
+        createTestEntity({ name: 'Charlie', age: 35, isActive: false }),
+      ]);
+
+      const projectedUsers = await repo.find(
+        { isActive: true },
+        { name: true, age: true }
+      );
+
+      expect(sortBy(projectedUsers, (u) => u.name)).toEqual([
+        { name: 'Alice', age: 25 },
+        { name: 'Bob', age: 30 },
+      ]);
+    });
+
+    it('should support projections with id field', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const createdIds = await repo.createMany([
+        createTestEntity({ name: 'Alice', age: 25 }),
+        createTestEntity({ name: 'Bob', age: 30 }),
+      ]);
+
+      const projectedUsers = await repo.find({}, { id: true, name: true });
+
+      expect(sortBy(projectedUsers, (u) => u.name)).toEqual([
+        { name: 'Alice', id: createdIds[0] },
+        { name: 'Bob', id: createdIds[1] },
+      ]);
+    });
+
+    it('should handle projections with no matching entities', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+      const entity = createTestEntity({ name: 'Test Entity' });
+      await repo.create(entity);
+
+      const results = await repo.find(
+        { name: 'Non-existent' },
+        { name: true, email: true }
+      );
+      expect(results).toHaveLength(0);
     });
   });
 });
