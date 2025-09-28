@@ -695,7 +695,6 @@ export function createSmartFirestoreRepo<
       projection?: P
     ): Promise<Projected<T, P>[]> => {
       if (config.scopeBreach(filter)) {
-        // result is empty for attempted scope breach
         return [];
       }
 
@@ -733,7 +732,6 @@ export function createSmartFirestoreRepo<
 
     count: async (filter: Partial<T>): Promise<number> => {
       if (config.scopeBreach(filter)) {
-        // result is 0 for attempted scope breach
         return 0;
       }
 

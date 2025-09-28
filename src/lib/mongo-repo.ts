@@ -628,7 +628,6 @@ export function createSmartMongoRepo<
 
     count: async (filter: Partial<T>): Promise<number> => {
       if (config.scopeBreach(filter)) {
-        // result is 0 for attempted scope breach
         return 0;
       }
 
