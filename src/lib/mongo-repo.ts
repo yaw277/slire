@@ -288,6 +288,19 @@ export function createSmartMongoRepo<
           },
         },
       };
+    } else if (traceStrategy === 'unbounded') {
+      // For unbounded strategy with server timestamps, add client timestamp to avoid complexity
+      const finalTraceValue = needsServerTimestamp
+        ? { ...traceValue, _at: new Date() }
+        : traceValue;
+
+      return {
+        ...mongoUpdate,
+        $push: {
+          ...(mongoUpdate.$push ?? {}),
+          [traceKey]: finalTraceValue,
+        },
+      };
     }
 
     return mongoUpdate;

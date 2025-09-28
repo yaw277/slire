@@ -27,6 +27,14 @@ import {
 } from './smart-repo';
 import { Prettify } from './types';
 
+// Firestore-specific repository config that excludes 'bounded' strategy
+export type FirestoreRepositoryConfig<T> = Omit<
+  RepositoryConfig<T>,
+  'traceStrategy'
+> & {
+  traceStrategy?: 'latest' | 'unbounded';
+};
+
 // Firestore-specific constants
 const FIRESTORE_MAX_WRITES_PER_BATCH = 500;
 
@@ -90,7 +98,7 @@ export type FirestoreRepo<
 export function createSmartFirestoreRepo<
   T extends { id: string },
   Scope extends Partial<T> = {},
-  Config extends RepositoryConfig<T> = {},
+  Config extends FirestoreRepositoryConfig<T> = {},
   Managed extends ManagedFields<T, Config, Scope> = ManagedFields<
     T,
     Config,
@@ -115,6 +123,14 @@ export function createSmartFirestoreRepo<
   transaction?: Transaction;
 }): FirestoreRepo<T, Scope, Config, Managed, UpdateInput, CreateInput> {
   const config = repoConfig(options ?? ({} as Config), traceContext, scope);
+
+  // Firestore-specific validation: reject 'bounded' strategy
+  if (config.traceEnabled && config.getTraceStrategy() === 'bounded') {
+    throw new Error(
+      'Firestore does not support "bounded" trace strategy due to lack of server-side array slicing. ' +
+        'Use "latest" for single trace or "unbounded" for unlimited trace history.'
+    );
+  }
 
   const generateIdFn = options?.generateId ?? uuidv4;
   const identityMode = options?.identity ?? 'synced';
@@ -231,12 +247,10 @@ export function createSmartFirestoreRepo<
         ...firestoreUpdate,
         [traceKey]: traceValue,
       };
-    } else if (traceStrategy === 'bounded') {
+    } else if (traceStrategy === 'unbounded') {
       return {
         ...firestoreUpdate,
         [traceKey]: FieldValue.arrayUnion(traceValue),
-        // Note: Firestore doesn't have a built-in array slice operation like MongoDB
-        // We'll need to handle bounded array size in a separate operation or via Cloud Functions
       };
     }
 

@@ -36,7 +36,7 @@ export type RepositoryConfig<T> = {
   version?: true | NumberKeys<T>;
   identity?: 'synced' | 'detached';
   traceKey?: ObjectKeys<T>;
-  traceStrategy?: 'latest' | 'bounded';
+  traceStrategy?: 'latest' | 'bounded' | 'unbounded';
   traceLimit?: number;
 };
 
@@ -110,8 +110,14 @@ export function repoConfig<T extends { id: string }>(
   const traceLimit = config.traceLimit;
 
   // Validate trace configuration
-  if (traceEnabled && traceStrategy === 'bounded' && !traceLimit) {
-    throw new Error('traceLimit is required when traceStrategy is "bounded"');
+  if (
+    traceEnabled &&
+    (traceStrategy === 'bounded' || traceStrategy === 'unbounded')
+  ) {
+    if (traceStrategy === 'bounded' && !traceLimit) {
+      throw new Error('traceLimit is required when traceStrategy is "bounded"');
+    }
+    // Note: 'unbounded' strategy doesn't require traceLimit (it's unlimited by design)
   }
 
   const scopeObj = scope ?? ({} as Partial<T>);
