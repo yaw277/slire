@@ -544,7 +544,8 @@ export function createSmartFirestoreRepo<
             ...preparedPublicIds.slice(offset, offset + batch.length)
           );
         } catch {
-          // Handle partial failure - this is simplified for now
+          // Firestore batch failed - entire batch fails atomically
+          // All remaining operations (this batch + subsequent batches) are considered failed
           const failedIds = preparedPublicIds.slice(offset);
           throw new CreateManyPartialFailure({
             insertedIds: insertedSoFar,

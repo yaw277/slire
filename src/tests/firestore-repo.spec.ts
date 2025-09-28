@@ -4,6 +4,7 @@ import {
   createSmartFirestoreRepo,
   convertFirestoreTimestamps,
 } from '../lib/firestore-repo';
+import { CreateManyPartialFailure } from '../lib/smart-repo';
 import {
   clearFirestoreCollection,
   firestore,
@@ -413,6 +414,76 @@ describe('createSmartFirestoreRepo', function () {
           email: `user${i}@example.com`,
           age: 20 + i,
         });
+      }
+    });
+
+    it('should throw CreateManyPartialFailure on duplicate ids within a single batch (Firestore: entire batch fails)', async () => {
+      // generate identical ids to force batch failure (Firestore batches are atomic)
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        options: { generateId: () => 'DUPLICATE-ID' },
+      });
+
+      const entities = [
+        createTestEntity({ name: 'A' }),
+        createTestEntity({ name: 'B' }),
+        createTestEntity({ name: 'C' }),
+      ];
+
+      try {
+        await repo.createMany(entities);
+        fail('should have thrown');
+      } catch (e: any) {
+        if (e instanceof CreateManyPartialFailure) {
+          // Firestore behavior: entire batch fails atomically, so no inserts succeed
+          expect(e.insertedIds).toHaveLength(0);
+          expect(e.failedIds).toHaveLength(3);
+          // Firestore should contain no documents (entire batch failed)
+          const snapshot = await rawTestCollection().get();
+          expect(snapshot.size).toBe(0);
+        } else {
+          throw e;
+        }
+      }
+    });
+
+    it('should report prior-batch inserts and mark subsequent ids as failed when a later batch fails', async () => {
+      // create 1005 entities to span multiple batches (Firestore batch limit is 500)
+      // generate unique ids for the first 1000, then duplicate the same id for the last 5
+      let counter = 0;
+      const generateId = () => {
+        counter += 1;
+        return counter <= 1000 ? `ID-${counter}` : 'DUP-LAST-BATCH';
+      };
+
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        options: { generateId },
+      });
+
+      const entities: TestEntity[] = [];
+      for (let i = 0; i < 1005; i++) {
+        entities.push(
+          createTestEntity({ name: `U${i}`, email: `u${i}@e.com` })
+        );
+      }
+
+      try {
+        await repo.createMany(entities);
+        fail('should have thrown');
+      } catch (e: any) {
+        if (e instanceof CreateManyPartialFailure) {
+          // Firestore behavior: first 1000 succeed (batches 1-2), third batch fails entirely
+          expect(e.insertedIds).toHaveLength(1000);
+          // All 5 entities in the third batch fail (entire batch fails atomically)
+          expect(e.failedIds).toHaveLength(5);
+          const snapshot = await rawTestCollection().get();
+          expect(snapshot.size).toBe(1000);
+        } else {
+          throw e;
+        }
       }
     });
   });
