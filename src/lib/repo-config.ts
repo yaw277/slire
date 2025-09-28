@@ -114,16 +114,12 @@ export function repoConfig<T extends { id: string }>(
     throw new Error('traceLimit is required when traceStrategy is "bounded"');
   }
 
-  // Scope-related logic
   const scopeObj = scope ?? ({} as Partial<T>);
   const SCOPE_KEYS = new Set<string>(Object.keys(scopeObj));
-
-  // Build readonly and managed field sets
   const READONLY_KEYS = new Set<string>(['id', '_id']);
   const HIDDEN_META_KEYS = new Set<string>();
   const configuredKeys: string[] = [];
 
-  // Add timestamp keys to readonly
   if (effectiveTraceTimestamps) {
     const createdAtKey = timestampConfig?.createdAt ?? DEFAULT_CREATED_AT_KEY;
     const updatedAtKey = timestampConfig?.updatedAt ?? DEFAULT_UPDATED_AT_KEY;
@@ -150,14 +146,12 @@ export function repoConfig<T extends { id: string }>(
     }
   }
 
-  // Add soft delete key to readonly
   if (softDeleteEnabled) {
     READONLY_KEYS.add(SOFT_DELETE_KEY);
     HIDDEN_META_KEYS.add(SOFT_DELETE_KEY);
     configuredKeys.push(SOFT_DELETE_KEY);
   }
 
-  // Add version key to readonly
   if (versionEnabled) {
     READONLY_KEYS.add(VERSION_KEY);
     configuredKeys.push(VERSION_KEY);
@@ -166,7 +160,6 @@ export function repoConfig<T extends { id: string }>(
     }
   }
 
-  // Add trace key to readonly
   if (traceEnabled) {
     READONLY_KEYS.add(traceKey);
     configuredKeys.push(traceKey);
@@ -199,12 +192,8 @@ export function repoConfig<T extends { id: string }>(
   }
 
   return {
-    // Configuration getters
     get softDeleteEnabled() {
       return softDeleteEnabled;
-    },
-    get versionEnabled() {
-      return versionEnabled;
     },
     get traceEnabled() {
       return traceEnabled;
@@ -213,7 +202,6 @@ export function repoConfig<T extends { id: string }>(
       return effectiveTraceTimestamps;
     },
 
-    // Field management
     isReadOnlyField: (fieldName: string): boolean => {
       return READONLY_KEYS.has(fieldName);
     },
@@ -222,22 +210,6 @@ export function repoConfig<T extends { id: string }>(
       return HIDDEN_META_KEYS.has(fieldName);
     },
 
-    isManagedField: (fieldName: string): boolean => {
-      return READONLY_KEYS.has(fieldName);
-    },
-
-    // Entity field filtering
-    filterManagedFields: (entity: Partial<T>): Partial<T> => {
-      const filtered: any = {};
-      for (const [key, value] of Object.entries(entity)) {
-        if (!READONLY_KEYS.has(key)) {
-          filtered[key] = value;
-        }
-      }
-      return filtered;
-    },
-
-    // Trace context building
     buildTraceContext: (op: WriteOp, mergeContext?: any): any => {
       if (!traceEnabled) return undefined;
 
@@ -254,29 +226,10 @@ export function repoConfig<T extends { id: string }>(
       };
     },
 
-    // Trace strategy access
     getTraceStrategy: () => traceStrategy,
     getTraceLimit: () => traceLimit,
     getTraceKey: () => traceKey,
 
-    // Update validation
-    validateUpdateOperation: (update: UpdateOperation<any>): void => {
-      const allFields = [
-        ...Object.keys(update.set || {}),
-        ...(update.unset || []),
-      ];
-      const readOnlyFields = allFields.filter((field) =>
-        READONLY_KEYS.has(field)
-      );
-
-      if (readOnlyFields.length > 0) {
-        throw new Error(
-          `Cannot modify read-only fields: ${readOnlyFields.join(', ')}`
-        );
-      }
-    },
-
-    // Timestamp handling
     getTimestamp: (): Date | undefined => {
       if (!effectiveTraceTimestamps) return undefined;
 
@@ -301,21 +254,14 @@ export function repoConfig<T extends { id: string }>(
       };
     },
 
-    // Soft delete key access
     getSoftDeleteKey: () => SOFT_DELETE_KEY,
 
-    // Version handling
     shouldIncrementVersion: (): boolean => {
       return versionEnabled;
     },
 
     getVersionKey: (): string => {
       return VERSION_KEY;
-    },
-
-    // Scope helpers
-    getScopeKeys: (): Set<string> => {
-      return SCOPE_KEYS;
     },
 
     validateNoReadonly: (
@@ -354,7 +300,7 @@ export function repoConfig<T extends { id: string }>(
       }
     },
 
-    detectScopeBreach: (filter: Partial<T>): boolean => {
+    scopeBreach: (filter: Partial<T>): boolean => {
       return Object.entries(scopeObj).some(
         ([k, v]) => (filter as any)[k] !== undefined && v !== (filter as any)[k]
       );
