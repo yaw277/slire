@@ -8,4 +8,6 @@ export default {
   transformIgnorePatterns: ['node_modules/(?!(lodash-es)/)'],
   moduleFileExtensions: ['ts', 'js', 'html'],
   coverageDirectory: '../../coverage/libs/smart-repo',
+  globalSetup: '<rootDir>/jest-emulator-setup.js',
+  globalTeardown: '<rootDir>/jest-emulator-teardown.js',
 };

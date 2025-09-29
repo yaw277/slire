@@ -17,56 +17,23 @@ class FirestoreFixture {
 
   public async setup() {
     if (!this.firestoreInstance) {
-      // Setup function that can be raced with timeout
-      const setupFirestore = async (): Promise<void> => {
-        // Configure Firestore to use the emulator
-        this.firestoreInstance = new Firestore({
-          projectId: PROJECT_ID,
-          host: FIRESTORE_HOST,
-          port: FIRESTORE_PORT,
-          ssl: false,
-          customHeaders: {
-            Authorization: 'Bearer owner',
-          },
-        });
-
-        // Test connection by trying to get a dummy document
-        await this.firestoreInstance
-          .collection('_test')
-          .doc('_connectivity')
-          .get();
-      };
-
-      // Create timeout promise with cleanup
-      let timeoutHandle: NodeJS.Timeout;
-      const timeout = new Promise<never>((_, reject) => {
-        timeoutHandle = setTimeout(
-          () =>
-            reject(
-              new Error(
-                'Setup timeout after 3 seconds - Firestore emulator may not be running. ' +
-                  `Make sure it's running on ${FIRESTORE_HOST}:${FIRESTORE_PORT}. ` +
-                  `Start it with: firebase emulators:start --only firestore --project=${PROJECT_ID}`
-              )
-            ),
-          3000
-        );
+      // Configure Firestore to use the emulator (already running via Jest global setup)
+      this.firestoreInstance = new Firestore({
+        projectId: PROJECT_ID,
+        host: FIRESTORE_HOST,
+        port: FIRESTORE_PORT,
+        ssl: false,
+        customHeaders: {
+          Authorization: 'Bearer owner',
+        },
       });
 
-      try {
-        await Promise.race([setupFirestore(), timeout]);
-        clearTimeout(timeoutHandle!); // Clear timeout if setup succeeds
-      } catch (error) {
-        clearTimeout(timeoutHandle!); // Clear timeout if setup fails too
-        this.firestoreInstance = undefined; // Clear failed instance so teardown/clear operations are skipped
-        const errorMessage =
-          error instanceof Error ? error.message : 'Unknown error';
-        throw new Error(
-          `Failed to connect to Firestore emulator: ${errorMessage}. ` +
-            `Make sure it's running on ${FIRESTORE_HOST}:${FIRESTORE_PORT}. ` +
-            `Start it with: firebase emulators:start --only firestore --project=${PROJECT_ID}`
-        );
-      }
+      // Test connection by trying to get a dummy document
+      // This should be immediate since emulator is already running
+      await this.firestoreInstance
+        .collection('_test')
+        .doc('_connectivity')
+        .get();
     }
   }
 
