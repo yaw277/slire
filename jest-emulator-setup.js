@@ -124,7 +124,7 @@ async function stopEmulator() {
     try {
       process.kill(emulatorProcess.pid, 0); // Test if process exists
       console.log('✓ Emulator process is running, attempting to stop...');
-    } catch (error) {
+    } catch {
       console.log('✓ Emulator process already terminated');
       emulatorProcess = null;
       return;
@@ -143,7 +143,7 @@ async function stopEmulator() {
     try {
       process.kill(emulatorProcess.pid, 0);
       stillRunning = true;
-    } catch (error) {
+    } catch {
       stillRunning = false;
     }
 
@@ -162,7 +162,7 @@ async function stopEmulator() {
         console.error(
           '❌ CRITICAL: Emulator process still running after SIGKILL!'
         );
-      } catch (error) {
+      } catch {
         console.log('✅ Emulator process successfully force killed');
       }
     } else {
