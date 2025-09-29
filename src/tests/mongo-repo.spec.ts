@@ -1544,8 +1544,8 @@ describe('createSmartMongoRepo', function () {
     });
   });
 
-  describe('identity', () => {
-    it('detached: create stores separate internal key and business id', async () => {
+  describe('detached identity', () => {
+    it('create stores separate internal key and business id', async () => {
       const repo = createSmartMongoRepo<TestEntity>({
         collection: testCollection(),
         mongoClient: mongo.client,
@@ -1570,7 +1570,7 @@ describe('createSmartMongoRepo', function () {
       expect(roundTripped?.name).toBe('Detached A');
     });
 
-    it('detached: CRUD by business id', async () => {
+    it('CRUD by business id', async () => {
       const repo = createSmartMongoRepo<TestEntity>({
         collection: testCollection(),
         mongoClient: mongo.client,
@@ -1598,7 +1598,7 @@ describe('createSmartMongoRepo', function () {
       expect(await repo.getById(bId)).toBeNull();
     });
 
-    it('detached: update preserves internal key', async () => {
+    it('update preserves internal key', async () => {
       const repo = createSmartMongoRepo<TestEntity>({
         collection: testCollection(),
         mongoClient: mongo.client,
