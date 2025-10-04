@@ -67,7 +67,6 @@ const expenseRepo = createSmartMongoRepo({
   collection: mongoClient.db('expenseDb').collection<Expense>('expenses'),
   mongoClient,
   scope: { organizationId: 'acme-123' }, // applied to all reads and writes
-  options: { generateId: generateExpenseId }, // all options are optional and come with sensible defaults
 });
 
 // better to have a factory enforcing constraints and encapsulating db/collection names
@@ -76,7 +75,6 @@ function createExpenseRepo(client: MongoClient, organizationId: string) {
     collection: client.db('expenseDb').collection<Expense>('expenses'),
     mongoClient: client,
     scope: { organizationId },
-    options: { generateId: generateExpenseId },
   });
 }
 ```
@@ -506,12 +504,14 @@ See [Audit Trail Strategies with Tracing](#audit-trail-strategies-with-tracing) 
 
 The `options` parameter configures consistency features and repository behavior:
 
-**`generateId?: () => string`** - Custom ID generation function. By default, the repository uses UUID v4 for generating entity IDs. Provide a custom function to use different ID formats (e.g., sequential numbers, custom prefixes, or other UUID versions). This function is called automatically during `create` and `createMany` operations.
+**`generateId?: 'server' | (() => string)`** - Controls how datastore IDs are generated.
 
-**`identity?: 'synced' | 'detached'`** - Controls whether the public `id` is tied to the datastore's internal key. Defaults to `'synced'`.
+- `'server'` (default): use MongoDB-native ObjectIds. IDs are allocated client-side (new ObjectId()) for stability during `createMany` and returned as strings by the repo.
+- `() => string`: provide a custom generator (e.g., uuid, domain-specific). The generated string is used as the datastore `_id`.
 
-- **synced (default)**: The datastore key and `id` are the same. In MongoDB, `_id === id`; in Firestore, the document id equals `id`. `id` is read-only on updates.
-- **detached**: The datastore uses its own internal key while `id` is a business key stored as a normal field. All CRUD operations address entities by `id`; the internal key is never exposed. **Ensure a unique index on `id`.** `id` is still read-only on updates. Create operations continue to generate `id` (client-supplied ids are not accepted).
+**`idKey?: StringKeys<T>`** - Public entity property name that exposes the ID, default `'id'`. The repo always returns entities with this property populated from the datastore `_id` (converted to string). This key is treated as readonly for updates.
+
+**`mirrorId?: boolean`** - Default `false`. When `true`, the repo also persists the ID as a normal field in the document under `idKey`. When `false`, `idKey` is computed on reads but not stored in the document.
 
 **`softDelete?: boolean`** - Enables soft delete functionality. When `true`, delete operations mark entities with a `_deleted` flag instead of physically removing them from the database. Soft-deleted entities are automatically excluded from all read operations (`find`, `getById`, `count`). Defaults to `false` (hard delete).
 
@@ -621,7 +621,7 @@ SmartRepo does not include upsert operations to keep the core API simple and sem
 
 ```ts
 await repo.collection.updateOne(
-  repo.applyConstraints({ _id: id }),
+  repo.applyConstraints({ _id: new ObjectId(id) }),
   repo.buildUpdateOperation({ set: partialEntity }),
   { upsert: true }
 );
@@ -630,7 +630,9 @@ await repo.collection.updateOne(
 - replace-like upsert (clear unspecified fields):
 
 ```ts
-const current = await repo.collection.findOne(repo.applyConstraints({ _id: id }));
+const current = await repo.collection.findOne(
+  repo.applyConstraints({ _id: new ObjectId(id) })
+);
 
 // build target input from your payload stripped off of managed fields
 const target = /* stripManaged(input) -> any */;
@@ -644,7 +646,7 @@ const unsetKeys = /* computeUnsetKeys(current, target) -> string[] */;
 // reuse repository logic for timestamps/versioning and validation
 const update = repo.buildUpdateOperation({ set: target, unset: unsetKeys as any });
 await repo.collection.updateOne(
-  repo.applyConstraints({ _id: id }), // or simply `{ id }` for detached identity mode
+  repo.applyConstraints({ _id: new ObjectId(id) }),
   update,
   { upsert: true }
 );
