@@ -122,7 +122,9 @@ describe('createSmartMongoRepo', function () {
       const createdId = await repo.create(entity);
 
       // Check what actually got stored in MongoDB
-      const rawDoc = await rawTestCollection().findOne({ _id: createdId });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(createdId),
+      });
 
       // Verify undefined fields are absent (not null)
       expect(rawDoc).not.toHaveProperty('email');
@@ -162,7 +164,9 @@ describe('createSmartMongoRepo', function () {
       const createdId = await repo.create(entityWithSystemFields);
 
       // Check what actually got stored - system fields should be managed automatically
-      const rawDoc = await rawTestCollection().findOne({ _id: createdId });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(createdId),
+      });
 
       // Verify malicious system fields were stripped and proper values set
       expect(rawDoc?._deleted).toBeUndefined(); // Should not exist (not soft-deleted)
@@ -227,7 +231,9 @@ describe('createSmartMongoRepo', function () {
       const createdId = await repo.create(entityWithSystemFields);
 
       // Check what actually got stored
-      const rawDoc = await rawTestCollection().findOne({ _id: createdId });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(createdId),
+      });
 
       // Verify system fields were stripped and proper values set
       expect(rawDoc?._deleted).toBeUndefined(); // Should not exist
@@ -762,7 +768,9 @@ describe('createSmartMongoRepo', function () {
       });
 
       // Check what actually got stored in MongoDB
-      const rawDoc = await rawTestCollection().findOne({ _id: createdId });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(createdId),
+      });
 
       // Verify undefined fields in nested objects are absent (not null)
       // Note: age remains from original entity since undefined was filtered from set operation
@@ -1642,7 +1650,7 @@ describe('createSmartMongoRepo', function () {
       const id = await repo.create(createTestEntity({ name: 'Test Entity' }));
       await repo.delete(id);
 
-      const raw = await rawTestCollection().findOne({ _id: id });
+      const raw = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw).toMatchObject({ _deleted: true });
     });
 
@@ -1657,7 +1665,7 @@ describe('createSmartMongoRepo', function () {
       await repo.delete(id);
 
       await repo.update(id, { set: { name: 'Should Not Update' } });
-      const raw = await rawTestCollection().findOne({ _id: id });
+      const raw = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw?.name).not.toBe('Should Not Update');
       expect(raw?.name).toBe('Test Entity'); // original name
     });
@@ -1678,7 +1686,7 @@ describe('createSmartMongoRepo', function () {
         { includeSoftDeleted: true }
       );
 
-      const raw1 = await rawTestCollection().findOne({ _id: id });
+      const raw1 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw1?.name).toBe('Updated Soft Deleted');
       expect(raw1).toHaveProperty('_deleted', true); // still soft-deleted
 
@@ -1751,7 +1759,7 @@ describe('createSmartMongoRepo', function () {
 
       const id = await repo.create(createTestEntity({ name: 'TS' }));
 
-      const raw1 = await rawTestCollection().findOne({ _id: id });
+      const raw1 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw1?._createdAt).toBeInstanceOf(Date);
       expect(raw1?._updatedAt).toBeInstanceOf(Date);
       expect(raw1?._deletedAt).toBeUndefined();
@@ -1761,7 +1769,7 @@ describe('createSmartMongoRepo', function () {
       // ensure the next update happens at a later timestamp
       await new Promise((r) => setTimeout(r, 2));
       await repo.update(id, { set: { name: 'TS2' } });
-      const raw2 = await rawTestCollection().findOne({ _id: id });
+      const raw2 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw2?._updatedAt).toBeInstanceOf(Date);
       // updatedAt should be newer than before
       expect(raw2!._updatedAt.getTime()).toBeGreaterThan(
@@ -1771,7 +1779,7 @@ describe('createSmartMongoRepo', function () {
       // ensure delete happens at a later timestamp
       await new Promise((r) => setTimeout(r, 2));
       await repo.delete(id);
-      const raw3 = await rawTestCollection().findOne({ _id: id });
+      const raw3 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw3?._deletedAt).toBeInstanceOf(Date);
       // on delete, updatedAt and deletedAt should be equal and newer than previous updatedAt
       expect(raw3!._updatedAt.getTime()).toBe(raw3!._deletedAt.getTime());
@@ -1788,7 +1796,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       const id = await repo.create(createTestEntity({ name: 'TS-M' }));
-      const raw1 = await rawTestCollection().findOne({ _id: id });
+      const raw1 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw1?._createdAt).toBeInstanceOf(Date);
       expect(raw1?._updatedAt).toBeInstanceOf(Date);
       expect(
@@ -1797,14 +1805,14 @@ describe('createSmartMongoRepo', function () {
 
       await new Promise((r) => setTimeout(r, 2));
       await repo.update(id, { set: { name: 'TS2' } });
-      const raw2 = await rawTestCollection().findOne({ _id: id });
+      const raw2 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw2!._updatedAt.getTime()).toBeGreaterThan(
         raw1!._updatedAt.getTime()
       );
 
       await new Promise((r) => setTimeout(r, 2));
       await repo.delete(id);
-      const raw3 = await rawTestCollection().findOne({ _id: id });
+      const raw3 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw3!._updatedAt.getTime()).toBe(raw3!._deletedAt.getTime());
       expect(raw3!._updatedAt.getTime()).toBeGreaterThan(
         raw2!._updatedAt.getTime()
@@ -1821,18 +1829,18 @@ describe('createSmartMongoRepo', function () {
       });
 
       const id = await repo.create(createTestEntity({ name: 'TS-C' }));
-      const raw1 = await rawTestCollection().findOne({ _id: id });
+      const raw1 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw1!._createdAt.getTime()).toBe(t.getTime());
       expect(raw1!._updatedAt.getTime()).toBe(t.getTime());
 
       t = new Date('2020-01-01T00:00:01Z');
       await repo.update(id, { set: { name: 'X' } });
-      const raw2 = await rawTestCollection().findOne({ _id: id });
+      const raw2 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw2!._updatedAt.getTime()).toBe(t.getTime());
 
       t = new Date('2020-01-01T00:00:02Z');
       await repo.delete(id);
-      const raw3 = await rawTestCollection().findOne({ _id: id });
+      const raw3 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw3!._deletedAt.getTime()).toBe(t.getTime());
       expect(raw3!._updatedAt.getTime()).toBe(t.getTime());
     });
@@ -1991,7 +1999,7 @@ describe('createSmartMongoRepo', function () {
       expect(retrieved).not.toHaveProperty('_updatedAt'); // hidden timestamp key as no updateAt key is configured
 
       // but _updatedAt should exist in raw document
-      const raw = await rawTestCollection().findOne({ _id: id });
+      const raw = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw).toHaveProperty('_updatedAt');
     });
 
@@ -2053,12 +2061,12 @@ describe('createSmartMongoRepo', function () {
       const id = await repo.create(createTestEntity({ name: 'Version Test' }));
 
       // check initial version in raw document
-      const raw1 = await rawTestCollection().findOne({ _id: id });
+      const raw1 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw1).toHaveProperty('_version', 1);
 
       // update and check version increment
       await repo.update(id, { set: { name: 'Updated' } });
-      const raw2 = await rawTestCollection().findOne({ _id: id });
+      const raw2 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw2).toHaveProperty('_version', 2);
 
       // entity should not include hidden version field
@@ -2107,12 +2115,12 @@ describe('createSmartMongoRepo', function () {
       );
 
       // check initial version
-      const raw1 = await rawTestCollection().findOne({ _id: id });
+      const raw1 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw1).toHaveProperty('_version', 1);
 
       // soft delete and check version increment
       await repo.delete(id);
-      const raw2 = await rawTestCollection().findOne({ _id: id });
+      const raw2 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw2).toHaveProperty('_version', 2);
       expect(raw2).toHaveProperty('_deleted', true);
     });
@@ -2131,14 +2139,18 @@ describe('createSmartMongoRepo', function () {
       ]);
 
       for (const id of ids) {
-        const raw = await rawTestCollection().findOne({ _id: id });
+        const raw = await rawTestCollection().findOne({
+          _id: new ObjectId(id),
+        });
         expect(raw).toHaveProperty('_version', 1);
       }
 
       await repo.updateMany(ids, { set: { name: 'Updated Bulk' } });
 
       for (const id of ids) {
-        const raw = await rawTestCollection().findOne({ _id: id });
+        const raw = await rawTestCollection().findOne({
+          _id: new ObjectId(id),
+        });
         expect(raw).toHaveProperty('_version', 2);
       }
     });
@@ -2154,12 +2166,12 @@ describe('createSmartMongoRepo', function () {
       );
 
       // should not have version field
-      const raw = await rawTestCollection().findOne({ _id: id });
+      const raw = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw).not.toHaveProperty('_version');
 
       // update should still work without version
       await repo.update(id, { set: { name: 'Updated No Version' } });
-      const raw2 = await rawTestCollection().findOne({ _id: id });
+      const raw2 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw2).not.toHaveProperty('_version');
     });
   });
@@ -2185,18 +2197,24 @@ describe('createSmartMongoRepo', function () {
       ];
 
       t = new Date('2020-01-01T00:00:01Z');
-      await repo.collection.bulkWrite(
+      await rawTestCollection().bulkWrite(
         updates.map((update) => ({
           updateOne: {
-            filter: { _id: update.id },
+            filter: { _id: new ObjectId(update.id) },
             update: repo.buildUpdateOperation(update),
           },
         }))
       );
 
-      const updated1 = await repo.collection.findOne({ _id: id1 });
-      const updated2 = await repo.collection.findOne({ _id: id2 });
-      const updated3 = await repo.collection.findOne({ _id: id3 });
+      const updated1 = await rawTestCollection().findOne({
+        _id: new ObjectId(id1),
+      });
+      const updated2 = await rawTestCollection().findOne({
+        _id: new ObjectId(id2),
+      });
+      const updated3 = await rawTestCollection().findOne({
+        _id: new ObjectId(id3),
+      });
 
       expect(updated1).toMatchObject({ name: 'Updated1', _updatedAt: t });
       expect(updated2).toMatchObject({ name: 'Updated2', _updatedAt: t });
@@ -2240,9 +2258,11 @@ describe('createSmartMongoRepo', function () {
         { operation: 'direct-update', source: 'admin-panel' }
       );
 
-      await repo.collection.updateOne({ _id: id }, updateOp);
+      await rawTestCollection().updateOne({ _id: new ObjectId(id) }, updateOp);
 
-      const rawDoc = await rawTestCollection().findOne({ _id: id });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(id),
+      });
       expect(rawDoc._trace).toMatchObject({
         userId: 'user123',
         requestId: 'req456',
@@ -2346,20 +2366,28 @@ describe('createSmartMongoRepo', function () {
       await repo.delete(id);
 
       // Default behavior - should not match soft-deleted entity
-      await repo.collection.updateOne(repo.applyConstraints({ _id: id }), {
-        $set: { _notInModel: 'default' },
-      });
+      await repo.collection.updateOne(
+        repo.applyConstraints({ _id: new ObjectId(id) }),
+        {
+          $set: { _notInModel: 'default' },
+        }
+      );
 
-      let updated = await repo.collection.findOne({ _id: id });
+      let updated = await rawTestCollection().findOne({
+        _id: new ObjectId(id),
+      });
       expect(updated).not.toHaveProperty('_notInModel');
 
       // With includeSoftDeleted: true - should match soft-deleted entity
       await repo.collection.updateOne(
-        repo.applyConstraints({ _id: id }, { includeSoftDeleted: true }),
+        repo.applyConstraints(
+          { _id: new ObjectId(id) },
+          { includeSoftDeleted: true }
+        ),
         { $set: { _notInModel: 'included' } }
       );
 
-      updated = await repo.collection.findOne({ _id: id });
+      updated = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(updated).toMatchObject({ _notInModel: 'included' });
     });
   });
@@ -2736,7 +2764,9 @@ describe('createSmartMongoRepo', function () {
       const entity = createTestEntity({ name: 'Test Entity' });
       const id = await repo.create(entity);
 
-      const rawDoc = await rawTestCollection().findOne({ _id: id });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(id),
+      });
       expect(rawDoc).not.toHaveProperty('_trace');
     });
 
@@ -2751,7 +2781,9 @@ describe('createSmartMongoRepo', function () {
       const entity = createTestEntity({ name: 'Test Entity' });
       const id = await repo.create(entity);
 
-      const rawDoc = await rawTestCollection().findOne({ _id: id });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(id),
+      });
       expect(rawDoc._trace).toMatchObject({
         userId: 'user123',
         requestId: 'req456',
@@ -2772,7 +2804,9 @@ describe('createSmartMongoRepo', function () {
       const entity = createTestEntity({ name: 'Test Entity' });
       const id = await repo.create(entity);
 
-      const rawDoc = await rawTestCollection().findOne({ _id: id });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(id),
+      });
       expect(rawDoc).not.toHaveProperty('_trace');
       expect(rawDoc.audit).toMatchObject({
         userId: 'user123',
@@ -2793,7 +2827,9 @@ describe('createSmartMongoRepo', function () {
         mergeTrace: { operation: 'import-csv', source: 'upload.csv' },
       });
 
-      const rawDoc = await rawTestCollection().findOne({ _id: id });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(id),
+      });
       expect(rawDoc._trace).toMatchObject({
         userId: 'user123',
         requestId: 'req456',
@@ -2819,7 +2855,9 @@ describe('createSmartMongoRepo', function () {
       const id = await repo.create(entity);
 
       // First operation
-      const rawDoc1 = await rawTestCollection().findOne({ _id: id });
+      const rawDoc1 = await rawTestCollection().findOne({
+        _id: new ObjectId(id),
+      });
       expect(rawDoc1._trace).toHaveLength(1);
       expect(rawDoc1._trace[0]._op).toBe('create');
 
@@ -2828,7 +2866,9 @@ describe('createSmartMongoRepo', function () {
       await repo.update(id, { set: { name: 'Updated 2' } });
       await repo.update(id, { set: { name: 'Updated 3' } });
 
-      const rawDoc2 = await rawTestCollection().findOne({ _id: id });
+      const rawDoc2 = await rawTestCollection().findOne({
+        _id: new ObjectId(id),
+      });
       expect(rawDoc2._trace).toHaveLength(3); // Should keep last 3
       expect(rawDoc2._trace.map((t: any) => t._op)).toEqual([
         'update',
@@ -2868,7 +2908,9 @@ describe('createSmartMongoRepo', function () {
       });
 
       for (const id of ids) {
-        const rawDoc = await rawTestCollection().findOne({ _id: id });
+        const rawDoc = await rawTestCollection().findOne({
+          _id: new ObjectId(id),
+        });
         expect(rawDoc._trace).toMatchObject({
           userId: 'user123',
           operation: 'bulk-import',
@@ -2894,7 +2936,9 @@ describe('createSmartMongoRepo', function () {
         { mergeTrace: { operation: 'user-edit' } }
       );
 
-      const rawDoc = await rawTestCollection().findOne({ _id: id });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(id),
+      });
       expect(rawDoc._trace).toMatchObject({
         userId: 'user123',
         operation: 'user-edit',
@@ -2923,7 +2967,9 @@ describe('createSmartMongoRepo', function () {
       );
 
       for (const id of ids) {
-        const rawDoc = await rawTestCollection().findOne({ _id: id });
+        const rawDoc = await rawTestCollection().findOne({
+          _id: new ObjectId(id),
+        });
         expect(rawDoc._trace).toMatchObject({
           userId: 'user123',
           operation: 'bulk-deactivate',
@@ -2948,7 +2994,9 @@ describe('createSmartMongoRepo', function () {
         mergeTrace: { operation: 'user-cancel', reason: 'duplicate' },
       });
 
-      const rawDoc = await rawTestCollection().findOne({ _id: id });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(id),
+      });
       expect(rawDoc._trace).toMatchObject({
         userId: 'user123',
         operation: 'user-cancel',
@@ -2974,7 +3022,9 @@ describe('createSmartMongoRepo', function () {
       });
 
       // Document should be completely removed, so no trace to check
-      const rawDoc = await rawTestCollection().findOne({ _id: id });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(id),
+      });
       expect(rawDoc).toBeNull();
     });
 
@@ -3012,7 +3062,9 @@ describe('createSmartMongoRepo', function () {
       });
 
       // Check the document after transaction is committed
-      const rawDoc = await rawTestCollection().findOne({ _id: createdId });
+      const rawDoc = await rawTestCollection().findOne({
+        _id: new ObjectId(createdId),
+      });
       expect(rawDoc._trace).toMatchObject({
         userId: 'user123',
         sessionId: 'sess456',
