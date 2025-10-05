@@ -405,16 +405,12 @@ export function createSmartFirestoreRepo<
       id: string,
       projection?: P
     ): Promise<Projected<T, P> | null> => {
-      // Lookup by document id
       const docRef = getDocRef(id);
       const doc: DocumentSnapshot = transaction
         ? await transaction.get(docRef)
         : await docRef.get();
 
       const result = fromFirestoreDoc(doc, projection);
-
-      // Apply client-side scope filtering
-      // TODO - better in fromFirestoreDoc???
 
       return result;
     },
@@ -438,9 +434,7 @@ export function createSmartFirestoreRepo<
 
       for (const [index, doc] of docs.entries()) {
         const result = fromFirestoreDoc(doc as DocumentSnapshot<T>, projection);
-
-        // TODO - scope breach better in fromFirestoreDoc, or?
-        if (result && !config.scopeBreach(result as any)) {
+        if (result) {
           foundDocs.push(result);
           foundIds.add(ids[index]);
         }
