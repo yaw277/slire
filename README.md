@@ -20,6 +20,12 @@
   - [applyConstraints](#applyconstraints)
   - [buildUpdateOperation](#buildupdateoperation)
   - [When you need upsert](#when-you-need-upsert)
+- [Firestore Implementation](#firestore-implementation)
+  - [Design assumptions](#design-assumptions)
+  - [Repository instantiation (scoped collection)](#repository-instantiation-scoped-collection)
+  - [Operation semantics](#operation-semantics)
+  - [Indexing notes](#indexing-notes)
+  - [Differences vs. MongoDB](#differences-vs-mongodb)
 - [Recommended Usage Patterns](#recommended-usage-patterns)
   - [Repository Factories](#repository-factories)
   - [Export Repository Types](#export-repository-types)
@@ -655,6 +661,65 @@ await repo.collection.updateOne(
 You can still leverage `repo.applyConstraints` for scope/soft-delete filtering and `repo.buildUpdateOperation` for timestamp/version logic in merge-style scenarios. For replace-like behavior with server timestamps, prefer `updateOne` with update modifiers provided by `buildUpdateOperation` (as shown) rather than `replaceOne` as it doesn't support server timestamps.
 
 Note: The replace-like pattern performs a pre-read to compute unset keys. To avoid race conditions and achieve all-or-nothing behavior, wrap this sequence in a transaction using `runTransaction`.
+
+## Firestore Implementation
+
+The Firestore implementation follows a more opinionated approach to play to Firestore’s strengths and avoid costly client-side work and index sprawl.
+
+### Design assumptions
+
+- Path‑scoped collections (recommended): Model multi‑tenancy/scope hierarchically in the document path, e.g. `organizations/{orgId}/users`. Instantiate the repository with the already scoped `collection` and the matching `scope`. Queries don’t add scope filters – the path enforces scope. Scope checks still protect writes from accidentally crossing scope boundaries.
+- Soft delete uses a boolean flag: Documents are created with `_deleted: false`. Soft deletes set `_deleted: true`. Reads/counts filter by `_deleted == false`.
+- Identity: `id` maps to `doc.id` (string). The `idKey`/`mirrorId` options behave as in the Mongo section (id exposed via `idKey`, optionally mirrored in the document).
+
+These assumptions reduce composite index requirements (no scope fields in filters) and eliminate most client‑side filtering.
+
+### Repository instantiation (scoped collection)
+
+```ts
+function createUserRepo(db: Firestore, orgId: string) {
+  return createSmartFirestoreRepo<User>({
+    collection: db.collection(`organizations/${orgId}/users`) as any,
+    firestore: db,
+    scope: { organizationId: orgId }, // validated on writes only
+    options: { softDelete: true }, // writes _deleted: false and filters on _deleted == false
+  });
+}
+```
+
+### Operation semantics
+
+- getById / getByIds
+
+  - Access documents by path (no scope filters). If soft delete is enabled and the document has `_deleted: true`, return `null` / exclude from results.
+
+- create / createMany
+
+  - Insert documents with `_deleted: false` when soft delete is enabled; apply timestamps/version/trace as configured.
+
+- update / updateMany
+
+  - Only update active documents (`_deleted: false`). Use batched writes; for multi‑document updates that must be atomic, provide a transaction handle.
+
+- delete / deleteMany
+
+  - With soft delete: set `_deleted: true` (and timestamp/version/trace). Without soft delete: physically delete.
+
+- find / findBySpec
+
+  - Build queries from the caller’s filter (no scope filters). When soft delete is enabled, add a server‑side `where('_deleted', '==', false)` to exclude soft‑deleted documents.
+
+- count / countBySpec
+  - Use Firestore’s count aggregation on the same filter as `find`, including `_deleted == false` when soft delete is enabled (no need to fetch documents).
+
+### Indexing notes
+
+- With path‑scoped collections, most compound filters will not include scope fields, greatly reducing the number of composite indexes you need.
+
+### Differences vs. MongoDB
+
+- Multi‑document updates are batched (not query‑based); wrap in a transaction for atomicity.
+- Document ids are strings (`doc.id`), and query capabilities differ (no “field‑does‑not‑exist”). The `_deleted` boolean pattern enables server‑side filtering instead of client‑side post‑processing.
 
 ## Recommended Usage Patterns
 
