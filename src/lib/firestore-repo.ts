@@ -344,6 +344,7 @@ export function createSmartFirestoreRepo<
         ...filtered,
         ...scope,
         ...(mirrorId ? { [idKey]: docId } : {}),
+        ...(config.softDeleteEnabled ? { [SOFT_DELETE_KEY]: false } : {}),
       },
     };
   }

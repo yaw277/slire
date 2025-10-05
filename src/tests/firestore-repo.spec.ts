@@ -172,6 +172,7 @@ describe('createSmartFirestoreRepo', function () {
         _version: 1, // System sets version to 1 (not 42 from input)
         _createdAt: fixedTimestamp,
         _updatedAt: fixedTimestamp,
+        _deleted: false, // docs get created with non-deleted marker
       });
 
       // Check trace structure (now uses configured timestamp strategy)
@@ -180,9 +181,6 @@ describe('createSmartFirestoreRepo', function () {
         _op: 'create', // System adds operation type
         _at: fixedTimestamp, // Now respects configured timestamp strategy
       });
-
-      // _deleted should not be present for a create operation
-      expect(convertedData).not.toHaveProperty('_deleted');
 
       // Business fields should be present
       expect(convertedData).toMatchObject({
