@@ -36,7 +36,7 @@ export type FirestoreRepositoryConfig<T> = Omit<
 };
 
 // Firestore-specific constants
-const FIRESTORE_MAX_WRITES_PER_BATCH = 500;
+const FIRESTORE_MAX_WRITES_PER_BATCH = 300; // conservative (max is 500)
 const FIRESTORE_IN_LIMIT = 10; // conservative 'in' operator limit across SDKs
 
 // Firestore repository type with additional Firestore-specific helpers and transaction methods
@@ -609,54 +609,49 @@ export function createSmartFirestoreRepo<
       ids: string[],
       options?: { mergeTrace?: any }
     ): Promise<void> => {
-      if (ids.length < 1) return;
-      for (const idChunk of chunk(ids, FIRESTORE_MAX_WRITES_PER_BATCH)) {
-        if (config.softDeleteEnabled) {
-          const updateOperation = applyTrace(
+      if (ids.length < 1) {
+        return;
+      }
+
+      const softDelete = config.softDeleteEnabled
+        ? applyTrace(
             'delete',
             applyVersion('delete', applyTimestamps('delete', SOFT_DELETE_MARK)),
             options?.mergeTrace
-          );
+          )
+        : undefined;
 
-          for (const inChunk of chunk(idChunk, FIRESTORE_IN_LIMIT)) {
+      for (const idChunk of chunk(ids, FIRESTORE_MAX_WRITES_PER_BATCH)) {
+        // make sure we only try to delete docs that exist and are not soft-deleted (idempotency)
+        const snaps = await Promise.all(
+          chunk(idChunk, FIRESTORE_IN_LIMIT).map((inChunk) => {
             const query = applyConstraints(
               collection.where(FieldPath.documentId(), 'in', inChunk).select()
             );
+            return transaction ? transaction.get(query) : query.get();
+          })
+        );
 
-            if (transaction) {
-              const snap = await transaction.get(query);
-              for (const doc of snap.docs) {
-                transaction.update(doc.ref, updateOperation);
-              }
-            } else {
-              const batch = firestore.batch();
-              const snap = await query.get();
-              for (const doc of snap.docs) {
-                batch.update(doc.ref, updateOperation);
-              }
-              await batch.commit();
-            }
-          }
-        } else {
-          for (const inChunk of chunk(idChunk, FIRESTORE_IN_LIMIT)) {
-            const query = collection
-              .where(FieldPath.documentId(), 'in', inChunk)
-              .select();
+        const batch = transaction ? undefined : firestore.batch();
 
-            if (transaction) {
-              const snap = await transaction.get(query);
-              for (const doc of snap.docs) {
-                transaction.delete(doc.ref);
-              }
-            } else {
-              const batch = firestore.batch();
-              const snap = await query.get();
-              for (const doc of snap.docs) {
-                batch.delete(doc.ref);
-              }
-              await batch.commit();
-            }
+        const doUpdate: any = transaction
+          ? transaction.update.bind(transaction)
+          : batch!.update.bind(batch!);
+
+        const doDelete: any = transaction
+          ? transaction.delete.bind(transaction)
+          : batch!.delete.bind(batch!);
+
+        for (const doc of snaps.map((s) => s.docs).flat()) {
+          if (softDelete) {
+            doUpdate(doc.ref, softDelete);
+          } else {
+            doDelete(doc.ref);
           }
+        }
+
+        if (batch) {
+          await batch.commit();
         }
       }
     },

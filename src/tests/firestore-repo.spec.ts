@@ -478,12 +478,12 @@ describe('createSmartFirestoreRepo', function () {
         fail('should have thrown');
       } catch (e: any) {
         if (e instanceof CreateManyPartialFailure) {
-          // Firestore behavior: first 1000 succeed (batches 1-2), third batch fails entirely
-          expect(e.insertedIds).toHaveLength(1000);
-          // All 5 entities in the third batch fail (entire batch fails atomically)
-          expect(e.failedIds).toHaveLength(5);
+          // Firestore behavior: first 900 succeed (batches 1-3), third batch fails entirely
+          expect(e.insertedIds).toHaveLength(900);
+          // All 105 entities in the fourth batch fail (entire batch fails atomically)
+          expect(e.failedIds).toHaveLength(105);
           const snapshot = await rawTestCollection().get();
-          expect(snapshot.size).toBe(1000);
+          expect(snapshot.size).toBe(900);
         } else {
           throw e;
         }
