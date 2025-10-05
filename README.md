@@ -346,15 +346,15 @@ Error handling and partial writes: The function performs a bulk upsert using `$s
 
 ### update
 
-`update(id: string, update: UpdateOperation<UpdateInput>, options?: { includeSoftDeleted?: boolean; mergeTrace?: any }): Promise<void>`
+`update(id: string, update: UpdateOperation<UpdateInput>, options?: { mergeTrace?: any }): Promise<void>`
 
-Updates a single entity identified by its ID. The update operation supports both `set` (to update fields) and `unset` (to remove optional fields) operations, which can be used individually or combined. The repository automatically applies scope filtering and excludes soft-deleted entities by default to ensure only active entities within the current scope can be updated. Use the `includeSoftDeleted: true` option to allow updating soft-deleted entities. Note that managed fields (scope properties, system fields like timestamps/version/id/trace) cannot be modified through updates - the `UpdateOperation<UpdateInput>` type excludes these fields, ensuring type safety at compile time. Implementations should also perform runtime checks to ensure that managed fields are not tampered with. Any configured timestamps (like `updatedAt`), versioning increments, and trace context are applied automatically. The optional `mergeTrace` parameter allows adding operation-specific trace context. No error is thrown if the entity doesn't exist or doesn't match the scope.
+Updates a single entity identified by its ID. The update operation supports both `set` (to update fields) and `unset` (to remove optional fields) operations, which can be used individually or combined. The repository excludes soft-deleted entities by default to ensure only active entities are updated. Note that managed fields (scope properties, system fields like timestamps/version/id/trace) cannot be modified through updates - the `UpdateOperation<UpdateInput>` type excludes these fields, ensuring type safety at compile time. Implementations should also perform runtime checks to ensure that managed fields are not tampered with. Any configured timestamps (like `updatedAt`), versioning increments, and trace context are applied automatically. The optional `mergeTrace` parameter allows adding operation-specific trace context. No error is thrown if the entity doesn't exist or doesn't match the scope.
 
 ### updateMany
 
-`updateMany(ids: string[], update: UpdateOperation<UpdateInput>, options?: { includeSoftDeleted?: boolean }): Promise<void>`
+`updateMany(ids: string[], update: UpdateOperation<UpdateInput>, options?: { mergeTrace?: any }): Promise<void>`
 
-Bulk version of `update` that applies the same update operation to multiple entities identified by their IDs. All entities are subject to the same scope filtering (including soft-delete exclusion by default) and can accept the same `includeSoftDeleted` option. Like the single `update` function, scope properties cannot be modified through bulk updates. Timestamp updates and versioning behavior are identical to the single `update` function. The operation succeeds even if some of the provided IDs don't exist or don't match the scope - only the valid, in-scope entities will be updated.
+Bulk version of `update` that applies the same update operation to multiple entities identified by their IDs. All entities are subject to soft-delete exclusion by default. Timestamp updates and versioning behavior are identical to the single `update` function. The operation succeeds even if some of the provided IDs don't exist - only valid, active entities will be updated.
 
 For large inputs, the operation may run in chunks to respect MongoDB limits and is not atomic across chunks. If you need all-or-nothing behavior across many IDs, wrap the call in a transaction using `runTransaction`.
 
@@ -590,9 +590,9 @@ Direct access to the underlying MongoDB collection instance. This property allow
 
 ### applyConstraints
 
-`applyConstraints(input: any, options?: { includeSoftDeleted?: boolean }): any`
+`applyConstraints(input: any): any`
 
-Helper method that applies the repository's scope filtering to a given filter object. Takes your custom filter criteria and merges it with the repository's configured scope (e.g., organizationId filter) and, by default, soft delete exclusion (if soft-delete is enabled) to ensure operations only target entities within the repository's scope that haven't been soft-deleted. Use the `includeSoftDeleted: true` option to include soft-deleted entities in the filter. Essential for maintaining data isolation when performing direct queries, updates, deletes, aggregations, or bulk operations on the collection.
+Helper method that applies the repository's scope filtering to a given filter object. Takes your custom filter criteria and merges it with the repository's configured scope. If soft-delete is enabled it enriches the filter to ensure operations only target entities within the repository's scope that haven't been soft-deleted. Essential for maintaining data isolation when performing direct queries, updates, deletes, aggregations, or bulk operations on the collection.
 
 ### buildUpdateOperation
 
@@ -765,15 +765,9 @@ Reasons to derive repository types from factory functions:
 When performing operations directly on `repo.collection`, always use the provided helper methods to maintain repository behavior:
 
 ```typescript
-// ✅ GOOD - uses helper methods (excludes soft-deleted by default)
+// ✅ GOOD - uses helper methods (excludes soft-deleted)
 await repo.collection.updateMany(
   repo.applyConstraints({ status: 'active' }),
-  repo.buildUpdateOperation({ set: { processed: true } })
-);
-
-// ✅ ALSO GOOD - explicitly include soft-deleted entities when needed
-await repo.collection.updateMany(
-  repo.applyConstraints({ status: 'active' }, { includeSoftDeleted: true }),
   repo.buildUpdateOperation({ set: { processed: true } })
 );
 
@@ -938,7 +932,7 @@ function createAuditedExpenseRepo(client: MongoClient, orgId: string) {
     async update(
       id: string,
       update: UpdateOperation<UpdateInput>,
-      options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
+      options?: { mergeTrace?: any }
     ) {
       return client.withSession(async (session) => {
         return session.withTransaction(async () => {
@@ -1079,7 +1073,7 @@ function createEventEmittingRepo(client: MongoClient, orgId: string) {
     async update(
       id: string,
       update: UpdateOperation<UpdateInput>,
-      options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
+      options?: { mergeTrace?: any }
     ) {
       await baseRepo.update(id, update, options);
 

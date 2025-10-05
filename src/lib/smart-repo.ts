@@ -44,12 +44,12 @@ export type SmartRepo<
   update(
     id: string,
     update: UpdateOperation<Prettify<UpdateInput>>,
-    options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
+    options?: { mergeTrace?: any }
   ): Promise<void>;
   updateMany(
     ids: string[],
     update: UpdateOperation<Prettify<UpdateInput>>,
-    options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
+    options?: { mergeTrace?: any }
   ): Promise<void>;
 
   delete(id: string, options?: { mergeTrace?: any }): Promise<void>;

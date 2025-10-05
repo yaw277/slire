@@ -522,7 +522,7 @@ export function createSmartFirestoreRepo<
     update: async (
       id: string,
       update: UpdateOperation<UpdateInput>,
-      options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
+      options?: { mergeTrace?: any }
     ): Promise<void> => {
       await repo.updateMany([id], update as any, options);
     },
@@ -530,7 +530,7 @@ export function createSmartFirestoreRepo<
     updateMany: async (
       ids: string[],
       update: UpdateOperation<UpdateInput>,
-      options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
+      options?: { mergeTrace?: any }
     ): Promise<void> => {
       if (ids.length < 1) {
         return;
@@ -553,13 +553,9 @@ export function createSmartFirestoreRepo<
 
             if (doc.exists) {
               const docData = doc.data()! as any;
-              // Check soft delete constraint
-              if (
-                config.softDeleteEnabled &&
-                !options?.includeSoftDeleted &&
-                docData[SOFT_DELETE_KEY]
-              ) {
-                continue; // Skip soft-deleted documents
+              // Skip soft-deleted documents
+              if (config.softDeleteEnabled && docData[SOFT_DELETE_KEY]) {
+                continue;
               }
               transaction.update(docRef, updateOperation);
             }
@@ -575,13 +571,9 @@ export function createSmartFirestoreRepo<
           for (const doc of docs) {
             if (doc.exists) {
               const docData = doc.data()! as any;
-              // Check soft delete constraint
-              if (
-                config.softDeleteEnabled &&
-                !options?.includeSoftDeleted &&
-                docData[SOFT_DELETE_KEY]
-              ) {
-                continue; // Skip soft-deleted documents
+              // Skip soft-deleted documents
+              if (config.softDeleteEnabled && docData[SOFT_DELETE_KEY]) {
+                continue;
               }
               batch.update(doc.ref, updateOperation);
             }

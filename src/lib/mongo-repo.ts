@@ -307,12 +307,8 @@ export function createSmartMongoRepo<
     return mongoUpdate;
   }
 
-  function applyConstraints(
-    input: any,
-    options?: { includeSoftDeleted?: boolean }
-  ): any {
-    const includeSoftDeleted = options?.includeSoftDeleted ?? false;
-    return config.softDeleteEnabled && !includeSoftDeleted
+  function applyConstraints(input: any): any {
+    return config.softDeleteEnabled
       ? {
           ...input,
           ...scope,
@@ -562,7 +558,7 @@ export function createSmartMongoRepo<
     update: async (
       id: string,
       update: UpdateOperation<UpdateInput>,
-      options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
+      options?: { mergeTrace?: any }
     ): Promise<void> => {
       await repo.updateMany([id], update as any, options);
     },
@@ -570,7 +566,7 @@ export function createSmartMongoRepo<
     updateMany: async (
       ids: string[],
       update: UpdateOperation<UpdateInput>,
-      options?: { includeSoftDeleted?: boolean; mergeTrace?: any }
+      options?: { mergeTrace?: any }
     ): Promise<void> => {
       if (ids.length < 1) {
         return;
@@ -585,7 +581,7 @@ export function createSmartMongoRepo<
           options?.mergeTrace
         );
         await collection.updateMany(
-          applyConstraints(idsFilter(idChunk), options),
+          applyConstraints(idsFilter(idChunk)),
           updateOperation,
           withSessionOptions()
         );

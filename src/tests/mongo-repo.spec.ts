@@ -1777,30 +1777,6 @@ describe('createSmartMongoRepo', function () {
       expect(raw?.name).toBe('Test Entity'); // original name
     });
 
-    it('update can target soft-deleted entities with includeSoftDeleted option', async () => {
-      const repo = createSmartMongoRepo({
-        collection: testCollection(),
-        mongoClient: mongo.client,
-        options: { softDelete: true },
-      });
-
-      const id = await repo.create(createTestEntity({ name: 'Entity 1' }));
-      await repo.delete(id);
-
-      await repo.update(
-        id,
-        { set: { name: 'Updated Soft Deleted' } },
-        { includeSoftDeleted: true }
-      );
-
-      const raw1 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
-      expect(raw1?.name).toBe('Updated Soft Deleted');
-      expect(raw1).toHaveProperty('_deleted', true); // still soft-deleted
-
-      // entity should still not appear in normal queries
-      expect(await repo.getById(id)).toBeNull();
-    });
-
     it('should not return soft-deleted entities in reads', async () => {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
@@ -2459,7 +2435,7 @@ describe('createSmartMongoRepo', function () {
       ]);
     });
 
-    it('applyConstraints with includeSoftDeleted option', async () => {
+    it('applyConstraints ignores soft-deleted entities by default', async () => {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
@@ -2485,17 +2461,14 @@ describe('createSmartMongoRepo', function () {
       });
       expect(updated).not.toHaveProperty('_notInModel');
 
-      // With includeSoftDeleted: true - should match soft-deleted entity
+      // No override; soft-deleted doc is ignored
       await repo.collection.updateOne(
-        repo.applyConstraints(
-          { _id: new ObjectId(id) },
-          { includeSoftDeleted: true }
-        ),
+        repo.applyConstraints({ _id: new ObjectId(id) }),
         { $set: { _notInModel: 'included' } }
       );
 
       updated = await rawTestCollection().findOne({ _id: new ObjectId(id) });
-      expect(updated).toMatchObject({ _notInModel: 'included' });
+      expect(updated).not.toHaveProperty('_notInModel');
     });
   });
 
