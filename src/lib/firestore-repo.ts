@@ -737,22 +737,10 @@ export function createSmartFirestoreRepo<
         }
       }
 
-      query = applyConstraints(query);
+      query = applyConstraints(query.select());
 
-      if (config.softDeleteEnabled) {
-        query = query.select(SOFT_DELETE_KEY);
-      } else {
-        // empty projection for count when soft-delete is disabled
-        query = query.select();
-      }
-
-      const snapshot = await query.get();
-
-      if (!config.softDeleteEnabled) {
-        return snapshot.size;
-      }
-
-      return snapshot.docs.filter((d) => !config.softDeleted(d.data())).length;
+      const agg = await query.count().get();
+      return agg.data().count;
     },
 
     countBySpec: async (spec: Specification<T>): Promise<number> => {

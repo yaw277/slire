@@ -1361,6 +1361,36 @@ describe('createSmartFirestoreRepo', function () {
 
       expect(await scoped.count({ id })).toBe(0);
     });
+
+    it('should count only active, in-scope documents', async () => {
+      // Base repo to prepare data with soft-delete enabled
+      const base = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        options: { softDelete: true },
+      });
+
+      // Create A (in-scope), B (in-scope, will be soft-deleted), C (out-of-scope)
+      await base.create(createTestEntity({ tenantId: 'acme', name: 'A' }));
+      const bId = await base.create(
+        createTestEntity({ tenantId: 'acme', name: 'B' })
+      );
+      await base.create(createTestEntity({ tenantId: 'other', name: 'C' }));
+
+      // Soft delete B
+      await base.delete(bId);
+
+      // Scoped repo for acme
+      const scoped = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+        options: { softDelete: true },
+      });
+
+      const count = await scoped.count({});
+      expect(count).toBe(1);
+    });
   });
 
   describe('findBySpec, countBySpec', () => {
