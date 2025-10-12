@@ -721,6 +721,15 @@ function createUserRepo(db: Firestore, orgId: string) {
 - Multi‑document updates are batched (not query‑based); wrap in a transaction for atomicity.
 - Document ids are strings (`doc.id`), and query capabilities differ (no “field‑does‑not‑exist”). The `_deleted` boolean pattern enables server‑side filtering instead of client‑side post‑processing.
 
+### Transactions (Firestore specifics)
+
+- reads must happen before writes: Firestore requires a transaction to execute all reads before any writes. Avoid read‑after‑write in the same transaction callback
+- internal reads: some repository methods perform an internal read (e.g., `updateMany` selects docs to update inside the transaction). Use them only after your explicit read phase, not after writes
+- recommended patterns:
+  - prepare data outside the transaction when possible; do only writes inside the transaction
+  - or inside the transaction: perform a single read phase first (collect ids, verify state), then perform writes; do not add more reads afterwards
+- write limits: Firestore enforces limits per transaction/batch (SDKs commonly cap to 500 writes; this repo uses conservative constants like `FIRESTORE_MAX_WRITES_PER_BATCH = 300` and `FIRESTORE_IN_LIMIT = 10`). Large operations are chunked accordingly
+
 ## Recommended Usage Patterns
 
 Follow the recommendations in this section to maintain consistency and keep the code organized. Most of them apply to the current MongoDB implementation.

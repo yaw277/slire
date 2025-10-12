@@ -2416,6 +2416,188 @@ describe('createSmartFirestoreRepo', function () {
       expect(names).toEqual(['A', 'B']);
     });
   });
+
+  describe('transactions', () => {
+    it('withTransaction should apply all operations within the same transaction', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      // prepare data outside the transaction
+      const createdIds = await repo.createMany([
+        createTestEntity({ name: 'TX Entity 1' }),
+        createTestEntity({ name: 'TX Entity 2' }),
+        createTestEntity({ name: 'TX Entity 3' }),
+      ]);
+
+      await firestore.firestore.runTransaction(async (tx) => {
+        const txRepo = repo.withTransaction(tx);
+
+        // read first
+        const before = await txRepo.find({});
+        expect(before).toHaveLength(3);
+
+        // then writes
+        await txRepo.update(createdIds[0], { set: { age: 99 } });
+        await txRepo.delete(createdIds[2]);
+      });
+
+      // verify changes persisted after transaction
+      const finalEntities = await repo.find({});
+      expect(finalEntities).toHaveLength(2);
+      expect(finalEntities.some((e) => e.name === 'TX Entity 1')).toBe(true);
+      expect(finalEntities.some((e) => e.name === 'TX Entity 2')).toBe(true);
+      expect(finalEntities.some((e) => e.name === 'TX Entity 3')).toBe(false);
+      expect(finalEntities.find((e) => e.name === 'TX Entity 1')?.age).toBe(99);
+    });
+
+    it('runTransaction should execute all operations within a transaction', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      // prepare data outside the transaction
+      const createdIds = await repo.createMany([
+        createTestEntity({ name: 'Run TX 1', age: 25 }),
+        createTestEntity({ name: 'Run TX 2', age: 30 }),
+        createTestEntity({ name: 'Run TX 3', age: 35 }),
+      ]);
+
+      await repo.runTransaction(async (txRepo) => {
+        // reads first
+        const existing = await txRepo.find({});
+        expect(existing).toHaveLength(3);
+        // writes after reads
+        await txRepo.updateMany(createdIds, { set: { age: 40 } });
+      });
+
+      // verify changes persisted
+      const finalEntities = await repo.find({ age: 40 });
+      expect(finalEntities).toHaveLength(3);
+      expect(finalEntities.map((e) => e.name)).toEqual(
+        expect.arrayContaining(['Run TX 1', 'Run TX 2', 'Run TX 3'])
+      );
+    });
+
+    it('should rollback all changes when withTransaction transaction fails', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      // create some initial data
+      const initialEntity = createTestEntity({ name: 'Initial Entity' });
+      const initialId = await repo.create(initialEntity);
+
+      try {
+        await firestore.firestore.runTransaction(async (tx) => {
+          const txRepo = repo.withTransaction(tx);
+
+          // read first
+          const exists = await txRepo.getById(initialId);
+          expect(exists).not.toBeNull();
+
+          // update first (performs a read + write internally)
+          await txRepo.update(initialId, {
+            set: { name: 'Should Not Be Updated' },
+          });
+
+          // then pure writes (no reads)
+          await txRepo.createMany([
+            createTestEntity({ name: 'Should Not Persist 1' }),
+            createTestEntity({ name: 'Should Not Persist 2' }),
+          ]);
+
+          // trigger rollback
+          throw new Error('Intentional transaction failure');
+        });
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toBe(
+          'Intentional transaction failure'
+        );
+      }
+
+      // verify rollback - only initial entity should exist with original values
+      const finalEntities = await repo.find({});
+      expect(finalEntities).toHaveLength(1);
+      expect(finalEntities[0].name).toBe('Initial Entity');
+    });
+
+    it('should rollback all changes when runTransaction fails', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      const initialIds = await repo.createMany([
+        createTestEntity({ name: 'Existing 1', age: 20 }),
+        createTestEntity({ name: 'Existing 2', age: 25 }),
+      ]);
+
+      try {
+        await repo.runTransaction(async (txRepo) => {
+          // reads first
+          const before = await txRepo.find({});
+          expect(before).toHaveLength(2);
+
+          // writes
+          await txRepo.updateMany(initialIds, { set: { age: 99 } });
+          await txRepo.delete(initialIds[0]);
+
+          // error for rollback
+          throw new Error('Transaction rollback test');
+        });
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toBe('Transaction rollback test');
+      }
+
+      // verify rollback - original state should be restored
+      const finalEntities = await repo.find({});
+      expect(finalEntities).toHaveLength(2);
+      expect(finalEntities.map((e) => e.name)).toEqual(
+        expect.arrayContaining(['Existing 1', 'Existing 2'])
+      );
+      expect(finalEntities.map((e) => e.age)).toEqual(
+        expect.arrayContaining([20, 25])
+      );
+    });
+
+    it('should work with scoped repositories in transactions', async () => {
+      const baseRepo = createSmartFirestoreRepo({
+        collection: firestore.firestore.collection(
+          COLLECTION_NAME
+        ) as CollectionReference<TestEntity>,
+        firestore: firestore.firestore,
+      });
+      const scopedRepo = createSmartFirestoreRepo({
+        collection: firestore.firestore.collection(
+          COLLECTION_NAME
+        ) as CollectionReference<TestEntity>,
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+      });
+
+      // perform operations without violating read-after-write rules
+      await scopedRepo.runTransaction(async (txRepo) => {
+        await txRepo.createMany([
+          omit(createTestEntity({ name: 'Scoped TX 1', age: 88 }), 'tenantId'),
+          omit(createTestEntity({ name: 'Scoped TX 2', age: 88 }), 'tenantId'),
+        ]);
+      });
+
+      // verify through base repo
+      const allEntities = await baseRepo.find({});
+      // reads ignore scope; both should be visible in the base collection
+      expect(allEntities).toHaveLength(2);
+      expect(
+        allEntities.every((e) => e.tenantId === 'acme' && e.age === 88)
+      ).toBe(true);
+    });
+  });
 });
 
 // Test Entity type and helper function (same as MongoDB tests)
