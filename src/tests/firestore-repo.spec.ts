@@ -2740,6 +2740,144 @@ describe('createSmartFirestoreRepo', function () {
       }).not.toThrow();
     });
   });
+
+  describe('tracing', () => {
+    it('should not apply trace when traceContext is not provided', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      const id = await repo.create(createTestEntity({ name: 'Trace None' }));
+
+      const raw = await rawTestCollection().doc(id).get();
+      expect(raw.data()).not.toHaveProperty('_trace');
+    });
+
+    it('should apply trace with latest strategy by default', async () => {
+      const traceContext = { userId: 'user123', requestId: 'req456' };
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        traceContext,
+      });
+
+      const id = await repo.create(createTestEntity({ name: 'Trace Latest' }));
+      const raw = await rawTestCollection().doc(id).get();
+      const data = convertFirestoreTimestamps(raw.data());
+
+      expect(data._trace).toMatchObject({
+        userId: 'user123',
+        requestId: 'req456',
+        _op: 'create',
+      });
+      expect(data._trace._at).toBeInstanceOf(Date);
+    });
+
+    it('should use custom traceKey when specified', async () => {
+      const traceContext = { userId: 'user123' };
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        traceContext,
+        options: { traceKey: 'audit' },
+      });
+
+      const id = await repo.create(
+        createTestEntity({ name: 'Trace Custom Key' })
+      );
+      const raw = await rawTestCollection().doc(id).get();
+      const data = convertFirestoreTimestamps(raw.data());
+
+      expect(data).not.toHaveProperty('_trace');
+      expect(data.audit).toMatchObject({ userId: 'user123', _op: 'create' });
+      expect(data.audit._at).toBeInstanceOf(Date);
+    });
+
+    it('should merge trace context in operations', async () => {
+      const traceContext = { userId: 'user123', requestId: 'req456' };
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        traceContext,
+      });
+
+      const id = await repo.create(createTestEntity({ name: 'Trace Merge' }), {
+        mergeTrace: { operation: 'import-csv', source: 'upload.csv' },
+      });
+      const raw = await rawTestCollection().doc(id).get();
+      const data = convertFirestoreTimestamps(raw.data());
+
+      expect(data._trace).toMatchObject({
+        userId: 'user123',
+        requestId: 'req456',
+        operation: 'import-csv',
+        source: 'upload.csv',
+        _op: 'create',
+      });
+
+      await repo.update(
+        id,
+        { set: { name: 'Updated' } },
+        {
+          mergeTrace: { operation: 'manual-edit' },
+        }
+      );
+      const raw2 = await rawTestCollection().doc(id).get();
+      const data2 = convertFirestoreTimestamps(raw2.data());
+      expect(data2._trace).toMatchObject({
+        userId: 'user123',
+        requestId: 'req456',
+        operation: 'manual-edit',
+        _op: 'update',
+      });
+    });
+
+    it('should use unbounded strategy when configured', async () => {
+      const traceContext = { userId: 'user123' };
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        traceContext,
+        options: { traceStrategy: 'unbounded' },
+      });
+
+      const id = await repo.create(createTestEntity({ name: 'Trace History' }));
+      await repo.update(id, { set: { name: 'Updated 1' } });
+      await repo.update(id, { set: { name: 'Updated 2' } });
+
+      const raw = await rawTestCollection().doc(id).get();
+      const data = convertFirestoreTimestamps(raw.data());
+
+      // _trace is an array with at least 3 entries (create + 2 updates)
+      expect(Array.isArray(data._trace)).toBe(true);
+      expect(data._trace.length).toBeGreaterThanOrEqual(3);
+      // last entry should be update
+      expect(data._trace[data._trace.length - 1]._op).toBe('update');
+    });
+
+    it('should respect custom trace timestamp provider', async () => {
+      let t = new Date('2024-03-01T00:00:00.000Z');
+      const clock = () => t;
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        traceContext: { userId: 'clock' },
+        options: { traceTimestamps: clock },
+      });
+
+      const id = await repo.create(createTestEntity({ name: 'Clock Trace' }));
+      const raw = await rawTestCollection().doc(id).get();
+      const data = convertFirestoreTimestamps(raw.data());
+      expect(data._trace._at.getTime()).toBe(t.getTime());
+
+      t = new Date('2024-03-01T00:00:05.000Z');
+      await repo.update(id, { set: { name: 'Clock Update' } });
+      const raw2 = await rawTestCollection().doc(id).get();
+      const data2 = convertFirestoreTimestamps(raw2.data());
+      expect(data2._trace._at.getTime()).toBe(t.getTime());
+    });
+  });
 });
 
 // Test Entity type and helper function (same as MongoDB tests)
