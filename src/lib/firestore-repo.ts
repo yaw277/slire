@@ -392,9 +392,9 @@ export function createSmartFirestoreRepo<
     getById: async <P extends Projection<T>>(
       id: string,
       projection?: P
-    ): Promise<Projected<T, P> | null> => {
+    ): Promise<Projected<T, P> | undefined> => {
       const [found] = await repo.getByIds<P>([id], projection as P);
-      return found[0] ?? null;
+      return found[0] ?? undefined;
     },
 
     getByIds: async <P extends Projection<T>>(

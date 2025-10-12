@@ -320,11 +320,11 @@ await repo.create({
 
 ### getById
 
-`getById(id: string): Promise<T | null>`
+`getById(id: string): Promise<T | undefined>`
 
-`getById<P extends Projection<T>>(id: string, projection: P): Promise<Projected<T, P> | null>`
+`getById<P extends Projection<T>>(id: string, projection: P): Promise<Projected<T, P> | undefined>`
 
-Retrieves a single entity by its ID, automatically applying the repository's scope filter. Returns `null` if no entity is found with the given ID or if the entity exists but doesn't match the scope (e.g., wrong organization). When using the projection variant, only the specified fields are returned and the result is properly typed to reflect the projection.
+Retrieves a single entity by its ID, automatically applying the repository's scope filter. Returns `undefined` if no entity is found with the given ID or if the entity exists but doesn't match the scope (e.g., wrong organization). When using the projection variant, only the specified fields are returned and the result is properly typed to reflect the projection.
 
 ### getByIds
 

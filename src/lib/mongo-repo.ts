@@ -429,7 +429,7 @@ export function createSmartMongoRepo<
     getById: async <P extends Projection<T>>(
       id: string,
       projection?: P
-    ): Promise<Projected<T, P> | null> => {
+    ): Promise<Projected<T, P> | undefined> => {
       const mongoProjection = projection
         ? Object.fromEntries(
             Object.keys(projection)
@@ -443,7 +443,7 @@ export function createSmartMongoRepo<
           mongoProjection ? { projection: mongoProjection } : undefined
         )
       );
-      return doc ? fromMongoDoc(doc, projection) : null;
+      return doc ? fromMongoDoc(doc, projection) : undefined;
     },
 
     getByIds: async <P extends Projection<T>>(

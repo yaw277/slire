@@ -527,7 +527,7 @@ describe('createSmartFirestoreRepo', function () {
         firestore: firestore.firestore,
       });
       const retrieved = await repo.getById('non-existent-id');
-      expect(retrieved).toBeNull();
+      expect(retrieved).toBeUndefined();
     });
 
     it('should support projections', async () => {
@@ -801,7 +801,7 @@ describe('createSmartFirestoreRepo', function () {
 
       // verify no entity was created
       const retrieved = await repo.getById('non-existent-id');
-      expect(retrieved).toBeNull();
+      expect(retrieved).toBeUndefined();
 
       const matched = await repo.find({ name: 'New Name' });
       expect(matched).toHaveLength(0);
@@ -1031,7 +1031,7 @@ describe('createSmartFirestoreRepo', function () {
       await repo.delete(createdId);
 
       const deleted = await repo.getById(createdId);
-      expect(deleted).toBeNull();
+      expect(deleted).toBeUndefined();
     });
 
     it('should not throw on non-existent entities', async () => {
@@ -1095,7 +1095,7 @@ describe('createSmartFirestoreRepo', function () {
 
       // verify the existing entity was deleted
       const deleted = await repo.getById(createdId);
-      expect(deleted).toBeNull();
+      expect(deleted).toBeUndefined();
     });
 
     it('should soft delete only active docs and ignore already soft-deleted/non-existing', async () => {
@@ -1522,7 +1522,7 @@ describe('createSmartFirestoreRepo', function () {
       );
 
       const gotB = await repo.getById(b);
-      expect(gotB).toBeNull();
+      expect(gotB).toBeUndefined();
 
       const [found, notFound] = await repo.getByIds([a, b, c]);
       expect(found.map((e) => e.name)).toEqual(
@@ -1575,8 +1575,8 @@ describe('createSmartFirestoreRepo', function () {
       });
 
       // getById returns both
-      expect(await scoped.getById(a)).not.toBeNull();
-      expect(await scoped.getById(b)).not.toBeNull();
+      expect(await scoped.getById(a)).toBeDefined();
+      expect(await scoped.getById(b)).toBeDefined();
 
       // find/count ignore scope on reads
       expect((await scoped.find({})).length).toBe(2);
@@ -1750,7 +1750,7 @@ describe('createSmartFirestoreRepo', function () {
       expect(await emptyScopedRepo.count({})).toBe(3);
 
       // access by id should work for any entity
-      expect(await emptyScopedRepo.getById(id2)).not.toBeNull();
+      expect(await emptyScopedRepo.getById(id2)).toBeDefined();
 
       // updates should not have readonly restrictions (since there is no scope)
       await emptyScopedRepo.update(id1, { set: { tenantId: 'changed' } });
@@ -2497,7 +2497,7 @@ describe('createSmartFirestoreRepo', function () {
 
           // read first
           const exists = await txRepo.getById(initialId);
-          expect(exists).not.toBeNull();
+          expect(exists).toBeDefined();
 
           // update first (performs a read + write internally)
           await txRepo.update(initialId, {

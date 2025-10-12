@@ -498,13 +498,13 @@ describe('createSmartMongoRepo', function () {
       });
     });
 
-    it('should return null when entity does not exist', async () => {
+    it('should return undefined when entity does not exist', async () => {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
       const retrieved = await repo.getById(new ObjectId().toHexString());
-      expect(retrieved).toBeNull();
+      expect(retrieved).toBeUndefined();
     });
 
     it('should support projections', async () => {
@@ -528,7 +528,7 @@ describe('createSmartMongoRepo', function () {
       });
     });
 
-    it('should return null for scope-breached docs even if projection excludes scope fields', async () => {
+    it('should return undefined for scope-breached docs even if projection excludes scope fields', async () => {
       const base = createSmartMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
@@ -544,7 +544,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       const result = await scoped.getById(id, { id: true, name: true });
-      expect(result).toBeNull();
+      expect(result).toBeUndefined();
     });
   });
 
@@ -757,7 +757,7 @@ describe('createSmartMongoRepo', function () {
 
       // verify no entity was created
       const retrieved = await repo.getById(new ObjectId().toHexString());
-      expect(retrieved).toBeNull();
+      expect(retrieved).toBeUndefined();
 
       const matched = await repo.find({ name: 'New Name' });
       expect(matched).toHaveLength(0);
@@ -958,7 +958,7 @@ describe('createSmartMongoRepo', function () {
       await repo.delete(createdId);
 
       const deleted = await repo.getById(createdId);
-      expect(deleted).toBeNull();
+      expect(deleted).toBeUndefined();
     });
 
     it('should not throw on non-existent entities', async () => {
@@ -1026,7 +1026,7 @@ describe('createSmartMongoRepo', function () {
 
       // verify the existing entity was deleted
       const deleted = await repo.getById(createdId);
-      expect(deleted).toBeNull();
+      expect(deleted).toBeUndefined();
     });
   });
 
@@ -1442,7 +1442,7 @@ describe('createSmartMongoRepo', function () {
       ]);
 
       const notAcme = await scopedRepo.getById(notAcmeId);
-      expect(notAcme).toBeNull();
+      expect(notAcme).toBeUndefined();
 
       const acmeUsers = await scopedRepo.find({});
       expect(acmeUsers).toHaveLength(2);
@@ -1605,8 +1605,8 @@ describe('createSmartMongoRepo', function () {
       ]);
 
       // entities not matching full scope should not be accessible
-      expect(await scopedRepo.getById(id2)).toBeNull();
-      expect(await scopedRepo.getById(id3)).toBeNull();
+      expect(await scopedRepo.getById(id2)).toBeUndefined();
+      expect(await scopedRepo.getById(id3)).toBeUndefined();
 
       // only entities matching all scope properties are visible
       const results = await scopedRepo.find({});
@@ -1649,7 +1649,7 @@ describe('createSmartMongoRepo', function () {
       expect(await emptyScopedRepo.count({})).toBe(3);
 
       // access by id should work for any entity
-      expect(await emptyScopedRepo.getById(id2)).not.toBeNull();
+      expect(await emptyScopedRepo.getById(id2)).toBeDefined();
 
       // updates should not have readonly restrictions (since there is no scope)
       await emptyScopedRepo.update(id1, { set: { tenantId: 'changed' } });
@@ -1798,7 +1798,7 @@ describe('createSmartMongoRepo', function () {
       );
 
       const gotB = await repo.getById(b);
-      expect(gotB).toBeNull();
+      expect(gotB).toBeUndefined();
 
       const [found, notFound] = await repo.getByIds([a, b, c]);
       expect(found.map((e) => e.name)).toEqual(

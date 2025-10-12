@@ -21,11 +21,11 @@ export type SmartRepo<
   CreateInput extends Record<string, unknown> = UpdateInput &
     Partial<Pick<T, Managed>>
 > = {
-  getById(id: string): Promise<T | null>;
+  getById(id: string): Promise<T | undefined>;
   getById<P extends Projection<T>>(
     id: string,
     projection: P
-  ): Promise<Projected<T, P> | null>;
+  ): Promise<Projected<T, P> | undefined>;
   getByIds(ids: string[]): Promise<[T[], string[]]>;
   getByIds<P extends Projection<T>>(
     ids: string[],
