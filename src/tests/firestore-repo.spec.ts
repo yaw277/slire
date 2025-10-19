@@ -1196,7 +1196,7 @@ describe('createSmartFirestoreRepo', function () {
 
       const projectedUsers = await repo.find(
         { isActive: true },
-        { name: true, age: true }
+        { projection: { name: true, age: true } }
       );
 
       expect(sortBy(projectedUsers, (u) => u.name)).toEqual([
@@ -1215,7 +1215,10 @@ describe('createSmartFirestoreRepo', function () {
         createTestEntity({ name: 'Bob', age: 30 }),
       ]);
 
-      const projectedUsers = await repo.find({}, { id: true, name: true });
+      const projectedUsers = await repo.find(
+        {},
+        { projection: { id: true, name: true } }
+      );
 
       expect(sortBy(projectedUsers, (u) => u.name)).toEqual([
         { name: 'Alice', id: createdIds[0] },
@@ -1233,7 +1236,7 @@ describe('createSmartFirestoreRepo', function () {
 
       const results = await repo.find(
         { name: 'Non-existent' },
-        { name: true, email: true }
+        { projection: { name: true, email: true } }
       );
       expect(results).toHaveLength(0);
     });
@@ -1252,7 +1255,10 @@ describe('createSmartFirestoreRepo', function () {
       expect(onlyA).toHaveLength(1);
       expect(onlyA[0].id).toBe(aId);
 
-      const onlyB = await repo.find({ id: bId }, { id: true, name: true });
+      const onlyB = await repo.find(
+        { id: bId },
+        { projection: { id: true, name: true } }
+      );
       expect(onlyB).toEqual([{ id: bId, name: 'B' }]);
     });
 
@@ -1272,8 +1278,44 @@ describe('createSmartFirestoreRepo', function () {
         scope: { tenantId: 'tenant-A' },
       });
 
-      const results = await scoped.find({ id }, { id: true, name: true });
+      const results = await scoped.find(
+        { id },
+        { projection: { id: true, name: true } }
+      );
       expect(results).toHaveLength(1);
+    });
+
+    it('should return empty on scope-breach by default', async () => {
+      const unscoped = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      await unscoped.createMany([
+        createTestEntity({ tenantId: 'acme', name: 'InScope' }),
+        createTestEntity({ tenantId: 'other', name: 'OutOfScope' }),
+      ]);
+
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+      });
+
+      const results = await repo.find({ tenantId: 'other' });
+      expect(results).toEqual([]);
+    });
+
+    it('should throw on scope-breach when configured to error', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        scope: { tenantId: 'acme' },
+      });
+
+      await expect(
+        repo.find({ tenantId: 'other' }, { onScopeBreach: 'error' })
+      ).rejects.toThrow('Scope breach detected in find filter');
     });
   });
 
@@ -1347,23 +1389,17 @@ describe('createSmartFirestoreRepo', function () {
       expect(await scoped.count({ id })).toBe(1);
     });
 
-    it('should count only active (not soft-deleted) documents', async () => {
-      const acme = createSmartFirestoreRepo({
-        collection: scopedTestCollection('acme'),
+    it('should return 0 on scope-breach by default and throw when configured', async () => {
+      const repo = createSmartFirestoreRepo({
+        collection: testCollection(),
         firestore: firestore.firestore,
-        options: { softDelete: true },
+        scope: { tenantId: 'acme' },
       });
+      expect(await repo.count({ tenantId: 'other' })).toBe(0);
 
-      await acme.create(createTestEntity({ tenantId: 'acme', name: 'A' }));
-      const bId = await acme.create(
-        createTestEntity({ tenantId: 'acme', name: 'B' })
-      );
-
-      // Soft delete B under acme path
-      await acme.delete(bId);
-
-      const count = await acme.count({});
-      expect(count).toBe(1);
+      await expect(
+        repo.count({ tenantId: 'other' }, { onScopeBreach: 'error' })
+      ).rejects.toThrow('Scope breach detected in count filter');
     });
   });
 
@@ -1423,7 +1459,9 @@ describe('createSmartFirestoreRepo', function () {
         describe: 'active users',
       };
 
-      const results = await repo.findBySpec(spec, { id: true, name: true });
+      const results = await repo.findBySpec(spec, {
+        projection: { id: true, name: true },
+      });
       expect(results).toHaveLength(1);
       expect(results[0]).toHaveProperty('id');
       expect(results[0]).toHaveProperty('name');
@@ -1686,7 +1724,7 @@ describe('createSmartFirestoreRepo', function () {
 
       const projectedUsers = await scopedRepo.find(
         {},
-        { tenantId: true, name: true }
+        { projection: { tenantId: true, name: true } }
       );
       expect(projectedUsers).toHaveLength(2);
       projectedUsers.forEach((user) => {
@@ -1708,7 +1746,10 @@ describe('createSmartFirestoreRepo', function () {
         omit(createTestEntity({ name: 'Match 2' }), 'tenantId', 'age'),
       ]);
 
-      const results = await scopedRepo.find({}, { tenantId: true, age: true });
+      const results = await scopedRepo.find(
+        {},
+        { projection: { tenantId: true, age: true } }
+      );
       expect(results).toHaveLength(2);
       results.forEach((user) => {
         expect(user).toMatchObject({ tenantId: 'acme', age: 30 });

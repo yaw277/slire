@@ -655,9 +655,17 @@ export function createSmartFirestoreRepo<
 
     find: async <P extends Projection<T>>(
       filter: Partial<T>,
-      projection?: P
+      options?: { projection?: P; onScopeBreach?: 'empty' | 'error' }
     ): Promise<Projected<T, P>[]> => {
       let query: Query = collection;
+
+      if (config.scopeBreach(filter)) {
+        const mode = options?.onScopeBreach ?? 'empty';
+        if (mode === 'error') {
+          throw new Error('Scope breach detected in find filter');
+        }
+        return [];
+      }
 
       // Apply filter constraints (map idKey to documentId)
       for (const [key, value] of Object.entries(filter)) {
@@ -672,8 +680,8 @@ export function createSmartFirestoreRepo<
       query = applyConstraints(query);
 
       // Apply server-side projection (idKey is computed from doc.id)
-      if (projection) {
-        const projectionFields = Object.keys(projection);
+      if (options?.projection) {
+        const projectionFields = Object.keys(options?.projection);
         const firestoreProjectionFields: string[] = [];
 
         for (const field of projectionFields) {
@@ -694,7 +702,7 @@ export function createSmartFirestoreRepo<
         if (!doc.exists) {
           continue;
         }
-        const result = fromFirestoreDoc(doc, projection);
+        const result = fromFirestoreDoc(doc, options?.projection);
         if (result) {
           results.push(result);
         }
@@ -705,13 +713,24 @@ export function createSmartFirestoreRepo<
 
     findBySpec: async <P extends Projection<T>>(
       spec: Specification<T>,
-      projection?: P
+      options?: { projection?: P; onScopeBreach?: 'empty' | 'error' }
     ): Promise<Projected<T, P>[]> => {
-      return repo.find(spec.toFilter(), projection as P);
+      return repo.find<P>(spec.toFilter(), options as any);
     },
 
-    count: async (filter: Partial<T>): Promise<number> => {
+    count: async (
+      filter: Partial<T>,
+      options?: { onScopeBreach?: 'zero' | 'error' }
+    ): Promise<number> => {
       let query: Query = collection;
+
+      if (config.scopeBreach(filter)) {
+        const mode = options?.onScopeBreach ?? 'zero';
+        if (mode === 'error') {
+          throw new Error('Scope breach detected in count filter');
+        }
+        return 0;
+      }
 
       // Apply filter constraints (map idKey to documentId)
       for (const [key, value] of Object.entries(filter)) {
@@ -729,8 +748,11 @@ export function createSmartFirestoreRepo<
       return agg.data().count;
     },
 
-    countBySpec: async (spec: Specification<T>): Promise<number> => {
-      return repo.count(spec.toFilter());
+    countBySpec: async (
+      spec: Specification<T>,
+      options?: { onScopeBreach?: 'zero' | 'error' }
+    ): Promise<number> => {
+      return repo.count(spec.toFilter(), options);
     },
 
     // Firestore-specific helpers

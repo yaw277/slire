@@ -1031,6 +1031,21 @@ describe('createSmartMongoRepo', function () {
   });
 
   describe('find', () => {
+    it('should return empty on scope-breach by default', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        scope: { tenantId: 'acme' },
+      });
+
+      await testCollection().insertMany([
+        createTestEntity({ tenantId: 'acme' }),
+        createTestEntity({ tenantId: 'other' }),
+      ] as any);
+
+      const results = await repo.find({ tenantId: 'other' });
+      expect(results).toEqual([]);
+    });
     it('should find entities matching the filter', async () => {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
@@ -1084,6 +1099,18 @@ describe('createSmartMongoRepo', function () {
       expect(results).toHaveLength(0);
     });
 
+    it('should throw on scope-breach when configured to error', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        scope: { tenantId: 'acme' },
+      });
+
+      await expect(
+        repo.find({ tenantId: 'other' }, { onScopeBreach: 'error' })
+      ).rejects.toThrow('Scope breach detected in find filter');
+    });
+
     it('should support projections', async () => {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
@@ -1097,7 +1124,7 @@ describe('createSmartMongoRepo', function () {
 
       const projectedUsers = await repo.find(
         { isActive: true },
-        { name: true, age: true }
+        { projection: { name: true, age: true } }
       );
 
       expect(sortBy(projectedUsers, (u) => u.name)).toEqual([
@@ -1116,7 +1143,10 @@ describe('createSmartMongoRepo', function () {
         createTestEntity({ name: 'Bob', age: 30 }),
       ]);
 
-      const projectedUsers = await repo.find({}, { id: true, name: true });
+      const projectedUsers = await repo.find(
+        {},
+        { projection: { id: true, name: true } }
+      );
 
       expect(sortBy(projectedUsers, (u) => u.name)).toEqual([
         { name: 'Alice', id: createdIds[0] },
@@ -1134,7 +1164,7 @@ describe('createSmartMongoRepo', function () {
 
       const results = await repo.find(
         { name: 'Non-existent' },
-        { name: true, email: true }
+        { projection: { name: true, email: true } }
       );
       expect(results).toHaveLength(0);
     });
@@ -1154,7 +1184,10 @@ describe('createSmartMongoRepo', function () {
       expect(onlyA).toHaveLength(1);
       expect(onlyA[0].id).toBe(aId);
 
-      const onlyB = await repo.find({ id: bId }, { id: true, name: true });
+      const onlyB = await repo.find(
+        { id: bId },
+        { projection: { id: true, name: true } }
+      );
       expect(onlyB).toEqual([{ id: bId, name: 'B' }]);
     });
 
@@ -1216,6 +1249,27 @@ describe('createSmartMongoRepo', function () {
 
       const count = await repo.count({ name: 'Non-existent' });
       expect(count).toBe(0);
+    });
+
+    it('should return 0 on scope-breach by default and throw when configured', async () => {
+      const unscoped = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      await unscoped.create(createTestEntity({ tenantId: 'other' }));
+
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        scope: { tenantId: 'acme' },
+      });
+
+      expect(await repo.count({ tenantId: 'other' })).toBe(0);
+
+      await expect(
+        repo.count({ tenantId: 'other' }, { onScopeBreach: 'error' })
+      ).rejects.toThrow('Scope breach detected in count filter');
     });
 
     it('should support counting by id field', async () => {
@@ -1309,7 +1363,9 @@ describe('createSmartMongoRepo', function () {
         describe: 'active users',
       };
 
-      const results = await repo.findBySpec(spec, { id: true, name: true });
+      const results = await repo.findBySpec(spec, {
+        projection: { id: true, name: true },
+      });
       expect(results).toHaveLength(1);
       expect(results[0]).toHaveProperty('id');
       expect(results[0]).toHaveProperty('name');
@@ -1567,7 +1623,7 @@ describe('createSmartMongoRepo', function () {
       // should be able to project scope properties
       const projectedUsers = await scopedRepo.find(
         {},
-        { tenantId: true, name: true }
+        { projection: { tenantId: true, name: true } }
       );
       expect(projectedUsers).toHaveLength(2);
       projectedUsers.forEach((user) => {

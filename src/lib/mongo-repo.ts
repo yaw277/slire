@@ -311,7 +311,7 @@ export function createSmartMongoRepo<
   }
 
   // helper to map Mongo doc to entity
-  function fromMongoDoc<P extends Projection<T>>(
+  function fromMongoDoc<P extends Projection<T> | undefined>(
     doc: any,
     projection?: P
   ): Projected<T, P> {
@@ -617,23 +617,28 @@ export function createSmartMongoRepo<
       }
     },
 
-    find: async <P extends Projection<T>>(
+    find: async <P extends Projection<T> | undefined>(
       filter: Partial<T>,
-      projection?: P
+      options?: { projection?: P; onScopeBreach?: 'empty' | 'error' }
     ): Promise<Projected<T, P>[]> => {
       if (config.scopeBreach(filter)) {
+        const mode = options?.onScopeBreach ?? 'empty';
+        if (mode === 'error') {
+          throw new Error('Scope breach detected in find filter');
+        }
         return [];
       }
 
       const mongoFilter = convertFilter(filter);
 
-      const mongoProjection = projection
+      const mongoProjection = options?.projection
         ? Object.fromEntries(
-            Object.keys(projection)
+            Object.keys(options.projection)
               .filter((k) => k !== idKey)
               .map((k) => [k, 1])
           )
         : undefined;
+
       const docs = await collection
         .find(
           applyConstraints(mongoFilter),
@@ -643,18 +648,27 @@ export function createSmartMongoRepo<
         )
         .toArray();
 
-      return docs.map((doc) => fromMongoDoc(doc, projection));
+      return docs.map((doc) =>
+        fromMongoDoc<P>(doc, options?.projection as P)
+      ) as unknown as Projected<T, P>[];
     },
 
     findBySpec: async <P extends Projection<T>>(
       spec: Specification<T>,
-      projection?: P
+      options?: { projection?: P; onScopeBreach?: 'empty' | 'error' }
     ): Promise<Projected<T, P>[]> => {
-      return repo.find(spec.toFilter(), projection as P);
+      return repo.find<P>(spec.toFilter(), options as any);
     },
 
-    count: async (filter: Partial<T>): Promise<number> => {
+    count: async (
+      filter: Partial<T>,
+      options?: { onScopeBreach?: 'zero' | 'error' }
+    ): Promise<number> => {
       if (config.scopeBreach(filter)) {
+        const mode = options?.onScopeBreach ?? 'zero';
+        if (mode === 'error') {
+          throw new Error('Scope breach detected in count filter');
+        }
         return 0;
       }
 
@@ -665,8 +679,11 @@ export function createSmartMongoRepo<
       );
     },
 
-    countBySpec: async (spec: Specification<T>): Promise<number> => {
-      return repo.count(spec.toFilter());
+    countBySpec: async (
+      spec: Specification<T>,
+      options?: { onScopeBreach?: 'zero' | 'error' }
+    ): Promise<number> => {
+      return repo.count(spec.toFilter(), options);
     },
 
     // To be used when simple CRUD methods are not enough and direct data access

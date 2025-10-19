@@ -7,6 +7,14 @@ import {
 } from './repo-config';
 import { Prettify } from './types';
 
+type FindOptions = {
+  onScopeBreach?: 'empty' | 'error';
+};
+
+export type CountOptions = {
+  onScopeBreach?: 'zero' | 'error';
+};
+
 // database-agnostic interface (limited to simple CRUD operations)
 export type SmartRepo<
   T extends { id: string },
@@ -55,19 +63,25 @@ export type SmartRepo<
   delete(id: string, options?: { mergeTrace?: any }): Promise<void>;
   deleteMany(ids: string[], options?: { mergeTrace?: any }): Promise<void>;
 
-  find(filter: Partial<T>): Promise<T[]>;
+  find(filter: Partial<T>, options?: FindOptions): Promise<T[]>;
   find<P extends Projection<T>>(
     filter: Partial<T>,
-    projection: P
+    options: FindOptions & { projection: P }
   ): Promise<Projected<T, P>[]>;
-  findBySpec<S extends Specification<T>>(spec: S): Promise<T[]>;
+  findBySpec<S extends Specification<T>>(
+    spec: S,
+    options?: FindOptions
+  ): Promise<T[]>;
   findBySpec<S extends Specification<T>, P extends Projection<T>>(
     spec: S,
-    projection: P
+    options: FindOptions & { projection: P }
   ): Promise<Projected<T, P>[]>;
 
-  count(filter: Partial<T>): Promise<number>;
-  countBySpec<S extends Specification<T>>(spec: S): Promise<number>;
+  count(filter: Partial<T>, options?: CountOptions): Promise<number>;
+  countBySpec<S extends Specification<T>>(
+    spec: S,
+    options?: CountOptions
+  ): Promise<number>;
 };
 
 // Specification pattern types
