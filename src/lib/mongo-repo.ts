@@ -40,10 +40,7 @@ export type MongoRepo<
 > = Prettify<
   SmartRepo<T, Scope, Config, Managed, UpdateInput, CreateInput> & {
     collection: Collection<T & { _id: string }>;
-    applyConstraints: (
-      input: any,
-      options?: { includeSoftDeleted?: boolean }
-    ) => any;
+    applyConstraints: (input: any) => any;
     buildUpdateOperation: (
       update: UpdateOperation<UpdateInput>,
       mergeTrace?: any
