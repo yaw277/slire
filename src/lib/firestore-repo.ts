@@ -11,6 +11,7 @@ import {
   Transaction,
 } from '@google-cloud/firestore';
 import { chunk } from 'lodash-es';
+import { QueryStream } from './query-stream';
 import {
   ManagedFields,
   Projected,
@@ -21,7 +22,6 @@ import {
 } from './repo-config';
 import {
   CreateManyPartialFailure,
-  QueryStream,
   SmartRepo,
   Specification,
   UpdateOperation,
@@ -664,12 +664,7 @@ export function createSmartFirestoreRepo<
         if (mode === 'error') {
           throw new Error('Scope breach detected in find filter');
         }
-        // Return empty stream
-        return QueryStream.fromIterator(
-          (async function* () {
-            // Empty generator
-          })()
-        );
+        return QueryStream.empty();
       }
 
       let query: Query = collection;
@@ -702,7 +697,6 @@ export function createSmartFirestoreRepo<
         }
       }
 
-      // Create async generator that yields transformed documents
       const generator = async function* () {
         const snapshot = await query.get();
 
@@ -717,7 +711,7 @@ export function createSmartFirestoreRepo<
         }
       };
 
-      return QueryStream.fromIterator(generator());
+      return new QueryStream(generator());
     },
 
     findBySpec: <P extends Projection<T>>(

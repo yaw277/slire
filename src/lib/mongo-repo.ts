@@ -1,5 +1,6 @@
 import { chunk } from 'lodash-es';
 import { ClientSession, Collection, MongoClient, ObjectId } from 'mongodb';
+import { QueryStream } from './query-stream';
 import {
   ManagedFields,
   Projected,
@@ -10,7 +11,6 @@ import {
 } from './repo-config';
 import {
   CreateManyPartialFailure,
-  QueryStream,
   SmartRepo,
   Specification,
   UpdateOperation,
@@ -629,12 +629,7 @@ export function createSmartMongoRepo<
         if (mode === 'error') {
           throw new Error('Scope breach detected in find filter');
         }
-        // Return empty stream
-        return QueryStream.fromIterator(
-          (async function* () {
-            // Empty generator
-          })()
-        );
+        return QueryStream.empty();
       }
 
       const mongoFilter = convertFilter(filter);
@@ -654,7 +649,6 @@ export function createSmartMongoRepo<
         )
       );
 
-      // Create async generator that yields transformed documents
       const generator = async function* () {
         try {
           while (await cursor.hasNext()) {
@@ -669,7 +663,7 @@ export function createSmartMongoRepo<
         }
       };
 
-      return QueryStream.fromIterator(generator());
+      return new QueryStream(generator());
     },
 
     findBySpec: <P extends Projection<T>>(
