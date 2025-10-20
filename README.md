@@ -407,6 +407,7 @@ For large inputs, the operation may run in chunks and is not atomic across chunk
 Queries entities and returns a streaming result that provides both array and iterator access. The filter uses a subset of the entity properties to match against. The repository automatically applies scope filtering in addition to the user-provided filter. If the filter breaches the configured scope, behavior is controlled by `onScopeBreach` (default `'empty'` → return empty stream; `'error'` → throw). If soft delete is enabled, soft-deleted entities are automatically excluded from results.
 
 The `FindOptions` parameter supports:
+
 - `onScopeBreach?: 'empty' | 'error'` - Handle scope breaches
 - `orderBy?: Record<string, 1 | -1 | 'asc' | 'desc' | 'ascending' | 'descending'>` - Sort results
 
@@ -422,22 +423,21 @@ for await (const user of repo.find({ status: 'active' })) {
 const users = await repo.find({ status: 'active' }).toArray();
 
 // Chain operations
-const result = await repo.find({ status: 'active' })
-  .skip(10)
-  .take(5)
-  .toArray();
+const result = await repo.find({ status: 'active' }).skip(10).take(5).toArray();
 
 // With ordering
-const orderedUsers = await repo.find({}, { orderBy: { name: 'asc' } }).toArray();
+const orderedUsers = await repo
+  .find({}, { orderBy: { name: 'asc' } })
+  .toArray();
 ```
 
 ### findBySpec
 
-`findBySpec<S extends Specification<T>>(spec: S, options?: { onScopeBreach?: 'empty' | 'error' }): Promise<T[]>`
+`findBySpec<S extends Specification<T>>(spec: S, options?: FindOptions): QueryStream<T>`
 
-`findBySpec<S extends Specification<T>, P extends Projection<T>>(spec: S, options: { projection: P; onScopeBreach?: 'empty' | 'error' }): Promise<Projected<T, P>[]>`
+`findBySpec<S extends Specification<T>, P extends Projection<T>>(spec: S, options: FindOptions & { projection: P }): QueryStream<Projected<T, P>>`
 
-Queries entities using a specification object that encapsulates filter criteria and business rules. The repository automatically applies scope filtering and soft delete exclusion just like `find`. Specifications provide composable, reusable query logic that can be combined using `combineSpecs`. When using the projection variant, only the specified fields are returned and the result is properly typed. See [Query Abstraction Patterns](#query-abstraction-patterns) for detailed examples and patterns.
+Queries entities using a specification object that encapsulates filter criteria and business rules. The repository automatically applies scope filtering and soft delete exclusion just like `find`. Specifications provide composable, reusable query logic that can be combined using `combineSpecs`. The `FindOptions` parameter supports the same options as `find` including `orderBy` for sorting. See [Query Abstraction Patterns](#query-abstraction-patterns) for detailed examples and patterns.
 
 ### count
 
