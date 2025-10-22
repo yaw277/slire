@@ -1617,6 +1617,45 @@ describe('createSmartFirestoreRepo', function () {
       expect(page.items).toHaveLength(3);
       expect(page.nextStartAfter).toBeUndefined();
     });
+
+    it('should work with specifications', async () => {
+      const repo = createSmartFirestoreRepo<TestEntity>({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      await repo.createMany([
+        createTestEntity({ name: 'Alice', isActive: true }),
+        createTestEntity({ name: 'Bob', isActive: true }),
+        createTestEntity({ name: 'Charlie', isActive: false }),
+        createTestEntity({ name: 'David', isActive: true }),
+        createTestEntity({ name: 'Eve', isActive: true }),
+      ]);
+
+      const activeUsersSpec: Specification<TestEntity> = {
+        toFilter: () => ({ isActive: true }),
+        describe: 'active users',
+      };
+
+      // First page
+      const page1 = await repo.findPageBySpec(activeUsersSpec, {
+        limit: 2,
+        orderBy: { name: 'asc' },
+      });
+      expect(page1.items).toHaveLength(2);
+      expect(page1.items[0].name).toBe('Alice');
+      expect(page1.items.every((u) => u.isActive)).toBe(true);
+      expect(page1.nextStartAfter).toBeDefined();
+
+      // Second page
+      const page2 = await repo.findPageBySpec(activeUsersSpec, {
+        limit: 2,
+        orderBy: { name: 'asc' },
+        startAfter: page1.nextStartAfter,
+      });
+      expect(page2.items).toHaveLength(2);
+      expect(page2.items.every((u) => u.isActive)).toBe(true);
+    });
   });
 
   describe('count', () => {

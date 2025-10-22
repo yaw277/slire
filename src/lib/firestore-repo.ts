@@ -838,6 +838,22 @@ export function createSmartFirestoreRepo<
       };
     },
 
+    findPageBySpec: async <P extends Projection<T>>(
+      spec: Specification<T>,
+      options: {
+        startAfter?: string;
+        limit: number;
+        orderBy?: OrderBy<T>;
+        onScopeBreach?: 'empty' | 'error';
+        projection?: P;
+      }
+    ): Promise<{
+      items: Projected<T, P>[];
+      nextStartAfter: string | undefined;
+    }> => {
+      return repo.findPage<P>(spec.toFilter(), options as any);
+    },
+
     count: async (
       filter: Partial<T>,
       options?: { onScopeBreach?: 'zero' | 'error' }

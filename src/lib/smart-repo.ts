@@ -107,6 +107,14 @@ export type SmartRepo<
     filter: Partial<T>,
     options: FindPageOptions<T> & { projection: P }
   ): Promise<PageResult<Projected<T, P>>>;
+  findPageBySpec<S extends Specification<T>>(
+    spec: S,
+    options: FindPageOptions<T>
+  ): Promise<PageResult<T>>;
+  findPageBySpec<S extends Specification<T>, P extends Projection<T>>(
+    spec: S,
+    options: FindPageOptions<T> & { projection: P }
+  ): Promise<PageResult<Projected<T, P>>>;
 
   count(filter: Partial<T>, options?: CountOptions): Promise<number>;
   countBySpec<S extends Specification<T>>(

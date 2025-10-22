@@ -718,7 +718,7 @@ export function createSmartMongoRepo<
         return { items: [], nextStartAfter: undefined };
       }
 
-      const mongoFilter = convertFilter(filter);
+      let mongoFilter = convertFilter(filter);
 
       const mongoProjection = options.projection
         ? Object.fromEntries(
@@ -732,11 +732,46 @@ export function createSmartMongoRepo<
       const sortOption: Record<string, 1 | -1> = {};
       if (options.orderBy) {
         for (const [field, dir] of Object.entries(options.orderBy)) {
-          sortOption[field] = isAscending(dir as SortDirection) ? 1 : -1;
+          // Convert field from 'id' to '_id' if necessary
+          const mongoField = field === idKey ? '_id' : field;
+          sortOption[mongoField] = isAscending(dir as SortDirection) ? 1 : -1;
         }
-      } else {
-        // Default sort by _id for deterministic ordering
+      }
+      // Always ensure _id is in the sort (as tiebreaker) for deterministic ordering
+      if (!sortOption._id) {
         sortOption._id = 1;
+      }
+
+      // Apply startAfter cursor if provided
+      if (options.startAfter) {
+        try {
+          const cursorId = new ObjectId(options.startAfter);
+
+          // Fetch the startAfter document to get sort field values
+          const startAfterDoc = await collection.findOne(
+            { _id: cursorId } as any,
+            withSessionOptions()
+          );
+
+          if (!startAfterDoc) {
+            throw new Error(`Invalid startAfter cursor: document not found`);
+          }
+
+          // Build the min-filter based on sort fields and startAfter document
+          const minFilter = getMinFilter({
+            orderBy: sortOption,
+            startAfterDoc,
+          });
+
+          // Merge min-filter with main filter using $and
+          mongoFilter = { $and: [mongoFilter, minFilter] };
+        } catch (error) {
+          throw new Error(
+            `Invalid startAfter cursor: ${
+              error instanceof Error ? error.message : options.startAfter
+            }`
+          );
+        }
       }
 
       let cursor = collection
@@ -747,16 +782,6 @@ export function createSmartMongoRepo<
           )
         )
         .sort(sortOption);
-
-      // Apply startAfter cursor if provided
-      if (options.startAfter) {
-        try {
-          const cursorId = new ObjectId(options.startAfter);
-          cursor = cursor.skip(0).filter({ _id: { $gt: cursorId } });
-        } catch {
-          throw new Error(`Invalid startAfter cursor: ${options.startAfter}`);
-        }
-      }
 
       // Fetch limit + 1 to determine if there are more results
       cursor = cursor.limit(options.limit + 1);
@@ -779,6 +804,22 @@ export function createSmartMongoRepo<
         items: items as Projected<T, P>[],
         nextStartAfter,
       };
+    },
+
+    findPageBySpec: async <P extends Projection<T>>(
+      spec: Specification<T>,
+      options: {
+        startAfter?: string;
+        limit: number;
+        orderBy?: OrderBy<T>;
+        onScopeBreach?: 'empty' | 'error';
+        projection?: P;
+      }
+    ): Promise<{
+      items: Projected<T, P>[];
+      nextStartAfter: string | undefined;
+    }> => {
+      return repo.findPage<P>(spec.toFilter(), options as any);
     },
 
     count: async (
@@ -879,4 +920,87 @@ function deepFilterUndefined(obj: any): any {
     }
   }
   return filtered;
+}
+
+/**
+ * Builds a filter that guarantees cursor-based pagination works correctly
+ * with custom orderBy clauses. This creates a lexicographic comparison filter
+ * that skips all documents up to and including the startAfter document.
+ *
+ * Example 1:
+ * - orderBy: { name: 'asc', age: 'asc' }
+ * - startAfter doc: { _id: 'X', name: 'Bob', age: 25 }
+ * - resulting filter:
+ *    (name > 'Bob')
+ *    OR (name = 'Bob' AND age > 25)
+ *    OR (name = 'Bob' AND age = 25 AND _id > 'X')
+ *
+ * Example 2:
+ * - orderBy: { name: 'desc', age: 'asc' }
+ * - startAfter doc: { _id: 'X', name: 'Bob', age: 25 }
+ * - resulting filter:
+ *    (name < 'Bob' OR NULLISH(name))
+ *    OR (name = 'Bob' AND age > 25)
+ *    OR (name = 'Bob' AND age = 25 AND _id > 'X')
+ *
+ * @see https://www.mongodb.com/docs/manual/reference/bson-type-comparison-order/
+ */
+function getMinFilter({
+  orderBy,
+  startAfterDoc,
+}: {
+  orderBy: Record<string, 1 | -1>;
+  startAfterDoc: any;
+}): any {
+  const { MinKey } = require('mongodb');
+
+  // MongoDB BSON type ordering helpers
+  const greaterThanNullAndUndefined = {
+    $nin: [[], null, MinKey],
+    $exists: true,
+  };
+  const lowerThanNullAndUndefined = { $in: [[], MinKey] };
+  const nullish = (field: string) => [
+    { [field]: { $exists: false } },
+    { [field]: null },
+  ];
+
+  const sortFields = Object.entries(orderBy).filter(
+    ([field]) => field !== '_id'
+  );
+  const filters: any[] = [];
+  const equalityPredicates: any[] = [];
+
+  for (const [field, direction] of sortFields) {
+    const startAfterValue = startAfterDoc[field];
+    const filter: any[] = [...equalityPredicates];
+
+    if (startAfterValue == null) {
+      filter.push({
+        [field]:
+          direction === 1
+            ? greaterThanNullAndUndefined
+            : lowerThanNullAndUndefined,
+      });
+      equalityPredicates.push({ $or: nullish(field) });
+    } else {
+      if (direction === 1) {
+        filter.push({ [field]: { $gt: startAfterValue } });
+      } else {
+        filter.push({
+          $or: [{ [field]: { $lt: startAfterValue } }, ...nullish(field)],
+        });
+      }
+      equalityPredicates.push({ [field]: startAfterValue });
+    }
+
+    filters.push({ $and: filter });
+  }
+
+  // Final tiebreaker using _id (always unique)
+  filters.push({
+    $and: [...equalityPredicates, { _id: { $gt: startAfterDoc._id } }],
+  });
+
+  return { $or: filters };
 }

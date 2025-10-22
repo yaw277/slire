@@ -11,7 +11,7 @@
   - [update](#update) - [updateMany](#updatemany)
   - [delete](#delete) - [deleteMany](#deletemany)
   - [find](#find) - [findBySpec](#findbyspec)
-  - [findPage](#findpage)
+  - [findPage](#findpage) - [findPageBySpec](#findpagebyspec)
   - [count](#count) - [countBySpec](#countbyspec)
 - [MongoDB Implementation](#mongodb-implementation)
   - [createSmartMongoRepo](#createsmartmongorepo)
@@ -528,16 +528,58 @@ const page = await repo.findPage(
 
 **Performance Considerations:**
 
-- Cursor-based pagination avoids the performance penalty of `skip()` for large offsets
-- The cursor is an opaque string token - for MongoDB it's the document `_id`, for Firestore it's the document ID
-- Cursors remain valid as long as the referenced document exists in the database
-- If the document referenced by a cursor is deleted, `findPage` throws an error
-- For best performance with large datasets, always specify an `orderBy` that includes unique fields
+- **Cursor-based pagination** avoids the performance penalty of `skip()` for large offsets, providing consistent O(1) navigation performance
+- **Cursor format**: For MongoDB it's the document `_id` (ObjectId string), for Firestore it's the document ID
+- **Cursor validity**: Cursors remain valid as long as the referenced document exists. If deleted, `findPage` throws an error
+- **Custom ordering with cursors**: When using custom `orderBy`, the implementation builds a compound filter that respects both the sort fields and the cursor position, ensuring correct pagination even with non-unique sort values
+- **Index requirements for MongoDB**: For optimal performance with custom `orderBy`, create a compound index on your sort fields plus `_id` as the final field:
+
+  ```javascript
+  // Example: Sorting by { age: 'desc', name: 'asc' }
+  db.collection.createIndex({ age: -1, name: 1, _id: 1 });
+
+  // Multi-field sort with filters
+  db.collection.createIndex({ status: 1, createdAt: -1, _id: 1 });
+  ```
+
+- **Null handling**: MongoDB sorts null/undefined values before other values in ascending order, after other values in descending order. The cursor implementation correctly handles these edge cases
+- **Default ordering**: If no `orderBy` is specified, results are sorted by `_id` (MongoDB) or `__name__` (Firestore) ascending for deterministic pagination
+- **Always use \_id as tiebreaker**: The implementation automatically adds `_id` to the sort order if not present, ensuring unique, stable ordering even when sort field values are not unique
 
 **When to Use:**
 
 - **Use `findPage`** for UI pagination, API endpoints with page tokens, or iterating through large datasets across multiple requests
 - **Use `find().skip().take()`** for small result sets, client-side streaming, or when you need the full QueryStream interface
+
+### findPageBySpec
+
+`findPageBySpec<S extends Specification<T>>(spec: S, options: FindPageOptions): Promise<PageResult<T>>`
+
+`findPageBySpec<S extends Specification<T>, P extends Projection<T>>(spec: S, options: FindPageOptions & { projection: P }): Promise<PageResult<Projected<T, P>>>`
+
+Provides cursor-based pagination using specification objects for query criteria. Works identically to `findPage` but accepts a `Specification<T>` instead of a filter object, enabling reusable, composable query logic. See [Query Abstraction Patterns](#query-abstraction-patterns) for detailed examples of the specification pattern.
+
+**Usage Example:**
+
+```typescript
+const activeUsersSpec: Specification<User> = {
+  toFilter: () => ({ isActive: true }),
+  describe: 'active users',
+};
+
+// First page
+const page1 = await repo.findPageBySpec(activeUsersSpec, {
+  limit: 20,
+  orderBy: { createdAt: 'desc' },
+});
+
+// Subsequent pages
+const page2 = await repo.findPageBySpec(activeUsersSpec, {
+  limit: 20,
+  orderBy: { createdAt: 'desc' },
+  startAfter: page1.nextStartAfter,
+});
+```
 
 ### count
 
