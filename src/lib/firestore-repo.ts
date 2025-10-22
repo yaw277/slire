@@ -23,7 +23,9 @@ import {
 import {
   CreateManyPartialFailure,
   isAscending,
+  OrderBy,
   SmartRepo,
+  SortDirection,
   Specification,
   UpdateOperation,
 } from './smart-repo';
@@ -661,10 +663,7 @@ export function createSmartFirestoreRepo<
       options?: {
         projection?: P;
         onScopeBreach?: 'empty' | 'error';
-        orderBy?: Record<
-          string,
-          1 | -1 | 'asc' | 'desc' | 'ascending' | 'descending'
-        >;
+        orderBy?: OrderBy<T>;
       }
     ): QueryStream<Projected<T, P>> => {
       if (config.scopeBreach(filter)) {
@@ -692,7 +691,10 @@ export function createSmartFirestoreRepo<
       // Apply ordering
       if (options?.orderBy) {
         for (const [field, dir] of Object.entries(options.orderBy)) {
-          query = query.orderBy(field, isAscending(dir) ? 'asc' : 'desc');
+          query = query.orderBy(
+            field,
+            isAscending(dir as SortDirection) ? 'asc' : 'desc'
+          );
         }
       } else {
         // Default sort by document ID for deterministic ordering
@@ -737,10 +739,7 @@ export function createSmartFirestoreRepo<
       options?: {
         projection?: P;
         onScopeBreach?: 'empty' | 'error';
-        orderBy?: Record<
-          string,
-          1 | -1 | 'asc' | 'desc' | 'ascending' | 'descending'
-        >;
+        orderBy?: OrderBy<T>
       }
     ): QueryStream<Projected<T, P>> => {
       return repo.find<P>(spec.toFilter(), options as any);

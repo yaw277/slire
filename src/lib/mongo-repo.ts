@@ -12,7 +12,9 @@ import {
 import {
   CreateManyPartialFailure,
   isAscending,
+  OrderBy,
   SmartRepo,
+  SortDirection,
   Specification,
   UpdateOperation,
 } from './smart-repo';
@@ -626,10 +628,7 @@ export function createSmartMongoRepo<
       options?: {
         projection?: P;
         onScopeBreach?: 'empty' | 'error';
-        orderBy?: Record<
-          string,
-          1 | -1 | 'asc' | 'desc' | 'ascending' | 'descending'
-        >;
+        orderBy?: OrderBy<T>;
       }
     ): QueryStream<Projected<T, P>> => {
       if (config.scopeBreach(filter)) {
@@ -654,7 +653,7 @@ export function createSmartMongoRepo<
       const sortOption: Record<string, 1 | -1> = {};
       if (options?.orderBy) {
         for (const [field, dir] of Object.entries(options.orderBy)) {
-          sortOption[field] = isAscending(dir) ? 1 : -1;
+          sortOption[field] = isAscending(dir as SortDirection) ? 1 : -1;
         }
       } else {
         // Default sort by _id for deterministic ordering
@@ -692,10 +691,7 @@ export function createSmartMongoRepo<
       options?: {
         projection?: P;
         onScopeBreach?: 'empty' | 'error';
-        orderBy?: Record<
-          string,
-          1 | -1 | 'asc' | 'desc' | 'ascending' | 'descending'
-        >;
+        orderBy?: OrderBy<T>
       }
     ): QueryStream<Projected<T, P>> => {
       return repo.find<P>(spec.toFilter(), options as any);

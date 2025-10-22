@@ -5,14 +5,21 @@ import {
   Projection,
   RepositoryConfig,
 } from './repo-config';
-import { OptionalPath, Prettify } from './types';
+import { OptionalPropPath, Prettify, PrimitivePropPath } from './types';
 
-export type FindOptions = {
+export type FindOptions<T> = {
   onScopeBreach?: 'empty' | 'error';
-  orderBy?: Record<string, SortDirection>;
+  orderBy?: OrderBy<T>;
 };
 
-type SortDirection = 1 | -1 | 'asc' | 'desc' | 'ascending' | 'descending';
+export type OrderBy<T> = Partial<Record<PrimitivePropPath<T>, SortDirection>>;
+export type SortDirection =
+  | 1
+  | -1
+  | 'asc'
+  | 'desc'
+  | 'ascending'
+  | 'descending';
 
 export type CountOptions = {
   onScopeBreach?: 'zero' | 'error';
@@ -66,18 +73,18 @@ export type SmartRepo<
   delete(id: string, options?: { mergeTrace?: any }): Promise<void>;
   deleteMany(ids: string[], options?: { mergeTrace?: any }): Promise<void>;
 
-  find(filter: Partial<T>, options?: FindOptions): QueryStream<T>;
+  find(filter: Partial<T>, options?: FindOptions<T>): QueryStream<T>;
   find<P extends Projection<T>>(
     filter: Partial<T>,
-    options: FindOptions & { projection: P }
+    options: FindOptions<T> & { projection: P }
   ): QueryStream<Projected<T, P>>;
   findBySpec<S extends Specification<T>>(
     spec: S,
-    options?: FindOptions
+    options?: FindOptions<T>
   ): QueryStream<T>;
   findBySpec<S extends Specification<T>, P extends Projection<T>>(
     spec: S,
-    options: FindOptions & { projection: P }
+    options: FindOptions<T> & { projection: P }
   ): QueryStream<Projected<T, P>>;
 
   count(filter: Partial<T>, options?: CountOptions): Promise<number>;
@@ -89,8 +96,8 @@ export type SmartRepo<
 
 export type UpdateOperation<T> =
   | { set: Partial<T>; unset?: never }
-  | { set?: never; unset: OptionalPath<T> | OptionalPath<T>[] }
-  | { set: Partial<T>; unset: OptionalPath<T> | OptionalPath<T>[] };
+  | { set?: never; unset: OptionalPropPath<T> | OptionalPropPath<T>[] }
+  | { set: Partial<T>; unset: OptionalPropPath<T> | OptionalPropPath<T>[] };
 
 // Specification pattern types
 export type Specification<T> = {

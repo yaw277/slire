@@ -61,9 +61,6 @@ export type Primitive =
   | Date
   | RegExp;
 
-// Depth-limited recursive optional leaf paths (max depth 4)
-// Includes both root optional keys and nested paths where the leaf property is optional
-
 type Decrease<D> = D extends 4
   ? 3
   : D extends 3
@@ -74,10 +71,12 @@ type Decrease<D> = D extends 4
   ? 0
   : never;
 
-export type OptionalPath<
+// dotted path to all properties that are optional, e.g. 'a.b.c'
+// depth-limited recursive for performance (2 dots)
+export type OptionalPropPath<
   T,
   Prefix extends string = '',
-  Depth extends number = 4
+  Depth extends number = 2
 > = Depth extends never
   ? never
   : T extends Primitive
@@ -92,7 +91,35 @@ export type OptionalPath<
               ? K
               : `${Prefix}.${K}`
             : never)
-        | OptionalPath<
+        | OptionalPropPath<
+            T[K],
+            Prefix extends '' ? K : `${Prefix}.${K}`,
+            Decrease<Depth>
+          >;
+    }[Extract<keyof T, string>]
+  : never;
+
+// dotted path to all properties that are of primitive types
+// depth-limited recursive for performance (2 dots)
+export type PrimitivePropPath<
+  T,
+  Prefix extends string = '',
+  Depth extends number = 2
+> = Depth extends never
+  ? never
+  : T extends Primitive
+  ? never
+  : T extends ReadonlyArray<any> | any[]
+  ? never
+  : T extends { [K in keyof T]: T[K] }
+  ? {
+      [K in Extract<keyof T, string>]:
+        | (T[K] extends Primitive
+            ? Prefix extends ''
+              ? K
+              : `${Prefix}.${K}`
+            : never)
+        | PrimitivePropPath<
             T[K],
             Prefix extends '' ? K : `${Prefix}.${K}`,
             Decrease<Depth>
