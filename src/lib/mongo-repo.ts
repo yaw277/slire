@@ -1,11 +1,6 @@
 import { chunk } from 'lodash-es';
-import {
-  ClientSession,
-  Collection,
-  MongoClient,
-  ObjectId,
-  MinKey,
-} from 'mongodb';
+import { ClientSession, Collection, MongoClient, ObjectId } from 'mongodb';
+import { getMongoMinFilter } from './get-mongo-min-filter';
 import { QueryStream } from './query-stream';
 import {
   ManagedFields,
@@ -777,7 +772,7 @@ export function createSmartMongoRepo<
         mongoFilter = {
           $and: [
             mongoFilter,
-            getMinFilter({
+            getMongoMinFilter({
               sortOption,
               startAfterDoc,
             }),
@@ -931,84 +926,4 @@ function deepFilterUndefined(obj: any): any {
     }
   }
   return filtered;
-}
-
-/**
- * Builds a filter that guarantees cursor-based pagination works correctly
- * with custom orderBy clauses. This creates a lexicographic comparison filter
- * that skips all documents up to and including the startAfter document.
- *
- * The sortOption should contain the effective sort fields (with _id last).
- *
- * Example 1:
- * - sortOption: { name: 1, age: 1, _id: 1 }
- * - startAfter doc: { _id: 'X', name: 'Bob', age: 25 }
- * - resulting filter:
- *    (name > 'Bob')
- *    OR (name = 'Bob' AND age > 25)
- *    OR (name = 'Bob' AND age = 25 AND _id > 'X')
- *
- * Example 2:
- * - sortOption: { name: -1, age: 1, _id: 1 }
- * - startAfter doc: { _id: 'X', name: 'Bob', age: 25 }
- * - resulting filter:
- *    (name < 'Bob' OR NULLISH(name))
- *    OR (name = 'Bob' AND age > 25)
- *    OR (name = 'Bob' AND age = 25 AND _id > 'X')
- *
- * Example 3 (only _id):
- * - sortOption: { _id: 1 }
- * - startAfter doc: { _id: 'X' }
- * - resulting filter: (_id > 'X')
- *
- * @see https://www.mongodb.com/docs/manual/reference/bson-type-comparison-order/
- */
-function getMinFilter({
-  sortOption,
-  startAfterDoc,
-}: {
-  sortOption: Record<string, 1 | -1>;
-  startAfterDoc: any;
-}): any {
-  // MongoDB BSON type ordering helpers
-  const greaterThanNullAndUndefined = {
-    $nin: [[], null, MinKey],
-    $exists: true,
-  };
-  const lowerThanNullAndUndefined = { $in: [[], MinKey] };
-  const nullish = (field: string) => [
-    { [field]: { $exists: false } },
-    { [field]: null },
-  ];
-
-  const filters: any[] = [];
-  const equalityPredicates: any[] = [];
-
-  for (const [field, direction] of Object.entries(sortOption)) {
-    const startAfterValue = startAfterDoc[field];
-    const filter: any[] = [...equalityPredicates];
-
-    if (startAfterValue == null) {
-      filter.push({
-        [field]:
-          direction === 1
-            ? greaterThanNullAndUndefined
-            : lowerThanNullAndUndefined,
-      });
-      equalityPredicates.push({ $or: nullish(field) });
-    } else {
-      if (direction === 1) {
-        filter.push({ [field]: { $gt: startAfterValue } });
-      } else {
-        filter.push({
-          $or: [{ [field]: { $lt: startAfterValue } }, ...nullish(field)],
-        });
-      }
-      equalityPredicates.push({ [field]: startAfterValue });
-    }
-
-    filters.push({ $and: filter });
-  }
-
-  return { $or: filters };
 }
