@@ -762,7 +762,7 @@ export function createSmartMongoRepo<
         }
 
         const startAfterDoc = await collection.findOne(
-          { _id: cursorId } as any,
+          applyConstraints({ _id: cursorId }),
           withSessionOptions()
         );
         if (!startAfterDoc) {

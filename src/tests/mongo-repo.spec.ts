@@ -1520,6 +1520,39 @@ describe('createSmartMongoRepo', function () {
       ).rejects.toThrow(/Invalid startAfter cursor: input must be/);
     });
 
+    it('should throw with invalid cursor (scope breach)', async () => {
+      const unscoped = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      const id = await unscoped.create(createTestEntity({ tenantId: 'acme' }));
+
+      const scoped = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        scope: { tenantId: 'tenant-A' },
+      });
+
+      await expect(
+        scoped.findPage({}, { limit: 10, startAfter: id })
+      ).rejects.toThrow('Invalid startAfter cursor: document not found');
+    });
+
+    it('should throw with invalid cursor (soft-deleted)', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        options: { softDelete: true },
+      });
+
+      const id = await repo.create(createTestEntity());
+
+      await expect(
+        repo.findPage({}, { limit: 10, startAfter: id })
+      ).rejects.toThrow('Invalid startAfter cursor: document not found');
+    });
+
     it('should work with large page sizes', async () => {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
