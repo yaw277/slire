@@ -719,6 +719,10 @@ export function createSmartMongoRepo<
         return { items: [], nextStartAfter: undefined };
       }
 
+      if (options.limit < 1) {
+        return { items: [], nextStartAfter: undefined };
+      }
+
       let mongoFilter = convertFilter(filter);
 
       const mongoProjection = options.projection

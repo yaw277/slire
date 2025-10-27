@@ -1547,6 +1547,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       const id = await repo.create(createTestEntity());
+      await repo.delete(id);
 
       await expect(
         repo.findPage({}, { limit: 10, startAfter: id })
@@ -1567,6 +1568,23 @@ describe('createSmartMongoRepo', function () {
 
       const page = await repo.findPage({}, { limit: 100 });
       expect(page.items).toHaveLength(3);
+      expect(page.nextStartAfter).toBeUndefined();
+    });
+
+    it('should work with negative limit', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      await repo.createMany([
+        createTestEntity({ name: 'User 1' }),
+        createTestEntity({ name: 'User 2' }),
+        createTestEntity({ name: 'User 3' }),
+      ]);
+
+      const page = await repo.findPage({}, { limit: -1 });
+      expect(page.items).toHaveLength(0);
       expect(page.nextStartAfter).toBeUndefined();
     });
 
