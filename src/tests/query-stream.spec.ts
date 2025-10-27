@@ -45,6 +45,22 @@ describe('QueryStream', () => {
       expect(result).toEqual([1, 2, 3]);
     });
 
+    it('should take 0', async () => {
+      const data = [1, 2, 3, 4, 5];
+      const stream = createStream(data);
+
+      const result = await stream.take(0).toArray();
+      expect(result).toEqual([]);
+    });
+
+    it('should take negative amount', async () => {
+      const data = [1, 2, 3, 4, 5];
+      const stream = createStream(data);
+
+      const result = await stream.take(-1).toArray();
+      expect(result).toEqual([]);
+    });
+
     it('should handle take with more items than available', async () => {
       const data = [1, 2];
       const stream = createStream(data);
@@ -79,6 +95,22 @@ describe('QueryStream', () => {
       expect(result).toEqual([]);
     });
 
+    it('should skip 0', async () => {
+      const data = [1, 2];
+      const stream = createStream(data);
+
+      const result = await stream.skip(0).toArray();
+      expect(result).toEqual([1, 2]);
+    });
+
+    it('should not skip for negative amount', async () => {
+      const data = [1, 2];
+      const stream = createStream(data);
+
+      const result = await stream.skip(-1).toArray();
+      expect(result).toEqual([1, 2]);
+    });
+
     it('should support chaining skip operations', async () => {
       const data = [1, 2, 3, 4, 5, 6];
       const stream = createStream(data);
@@ -99,6 +131,30 @@ describe('QueryStream', () => {
       }
 
       expect(pages).toEqual([[1, 2, 3], [4, 5, 6], [7]]);
+    });
+
+    it('should return no pages for page size 0', async () => {
+      const data = [1, 2, 3, 4, 5, 6, 7];
+      const stream = createStream(data);
+
+      const pages: number[][] = [];
+      for await (const page of stream.paged(0)) {
+        pages.push(page);
+      }
+
+      expect(pages).toEqual([]);
+    });
+
+    it('should return no pages for negative page size', async () => {
+      const data = [1, 2, 3, 4, 5, 6, 7];
+      const stream = createStream(data);
+
+      const pages: number[][] = [];
+      for await (const page of stream.paged(-1)) {
+        pages.push(page);
+      }
+
+      expect(pages).toEqual([]);
     });
 
     it('should handle partial last page', async () => {
