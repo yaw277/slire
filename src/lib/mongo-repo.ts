@@ -767,11 +767,17 @@ export function createSmartMongoRepo<
 
         const startAfterDoc = await collection.findOne(
           applyConstraints({ _id: cursorId }),
-          withSessionOptions()
+          withSessionOptions({
+            projection: Object.fromEntries(
+              Object.keys(sortOption).map((k) => [k, 1])
+            ),
+          })
         );
         if (!startAfterDoc) {
           throw new Error(`Invalid startAfter cursor: document not found`);
         }
+
+        console.log('startAfterDoc', startAfterDoc);
 
         mongoFilter = {
           $and: [

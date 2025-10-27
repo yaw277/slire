@@ -1571,6 +1571,23 @@ describe('createSmartMongoRepo', function () {
       expect(page.nextStartAfter).toBeUndefined();
     });
 
+    it('should work with limit 0', async () => {
+      const repo = createSmartMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      await repo.createMany([
+        createTestEntity({ name: 'User 1' }),
+        createTestEntity({ name: 'User 2' }),
+        createTestEntity({ name: 'User 3' }),
+      ]);
+
+      const page = await repo.findPage({}, { limit: 0 });
+      expect(page.items).toHaveLength(0);
+      expect(page.nextStartAfter).toBeUndefined();
+    });
+
     it('should work with negative limit', async () => {
       const repo = createSmartMongoRepo({
         collection: testCollection(),
