@@ -142,6 +142,15 @@ export function createSmartMongoRepo<
   };
   const filterForDoc = (doc: any): any => ({ _id: (doc as any)._id } as any);
 
+  const getProjection = (projection?: Projection<T>): any =>
+    projection
+      ? {
+          projection: Object.fromEntries(
+            Object.keys(projection).map((k) => [k === idKey ? '_id' : k, 1])
+          ),
+        }
+      : undefined;
+
   const SOFT_DELETE_MARK = { [config.getSoftDeleteKey()]: true };
 
   const timestampKeys = config.getTimestampKeys();
@@ -323,21 +332,12 @@ export function createSmartMongoRepo<
   ): Projected<T, P> {
     const { _id: mongoId, ...rest } = doc;
 
-    // if the projection is specified, only include id if it's in the projection
     if (projection) {
-      const projectedFields = Object.keys(projection);
-      const result: any = {};
+      const result = rest; // is already projected
 
       // include idKey if requested (computed)
-      if (projectedFields.includes(idKey)) {
+      if (Object.keys(projection).includes(idKey)) {
         result[idKey] = fromMongoId(mongoId);
-      }
-
-      // include other projected fields
-      for (const field of projectedFields) {
-        if (field !== idKey && field in rest) {
-          result[field] = rest[field];
-        }
       }
 
       return result as Projected<T, P>;
@@ -430,18 +430,9 @@ export function createSmartMongoRepo<
       id: string,
       projection?: P
     ): Promise<Projected<T, P> | undefined> => {
-      const mongoProjection = projection
-        ? Object.fromEntries(
-            Object.keys(projection)
-              .filter((k) => k !== idKey)
-              .map((k) => [k, 1])
-          )
-        : undefined;
       const doc = await collection.findOne(
         applyConstraints(idFilter(id)),
-        withSessionOptions(
-          mongoProjection ? { projection: mongoProjection } : undefined
-        )
+        withSessionOptions(getProjection(projection))
       );
       return doc ? fromMongoDoc(doc, projection) : undefined;
     },
@@ -450,19 +441,10 @@ export function createSmartMongoRepo<
       ids: string[],
       projection?: P
     ): Promise<[Projected<T, P>[], string[]]> => {
-      const mongoProjection = projection
-        ? Object.fromEntries(
-            Object.keys(projection)
-              .filter((k) => k !== idKey)
-              .map((k) => [k, 1])
-          )
-        : undefined;
       const docs = await collection
         .find(
           applyConstraints(idsFilter(ids)),
-          withSessionOptions(
-            mongoProjection ? { projection: mongoProjection } : undefined
-          )
+          withSessionOptions(getProjection(projection))
         )
         .toArray();
       const foundIds = new Set(docs.map((doc) => getPublicIdFromDoc(doc)));
@@ -642,14 +624,6 @@ export function createSmartMongoRepo<
 
       const mongoFilter = convertFilter(filter);
 
-      const mongoProjection = options?.projection
-        ? Object.fromEntries(
-            Object.keys(options.projection)
-              .filter((k) => k !== idKey)
-              .map((k) => [k, 1])
-          )
-        : undefined;
-
       // Build sort option from orderBy
       const sortOption: Record<string, 1 | -1> = {};
       if (options?.orderBy) {
@@ -664,9 +638,7 @@ export function createSmartMongoRepo<
       const cursor = collection
         .find(
           applyConstraints(mongoFilter),
-          withSessionOptions(
-            mongoProjection ? { projection: mongoProjection } : undefined
-          )
+          withSessionOptions(getProjection(options?.projection))
         )
         .sort(sortOption);
 
@@ -724,14 +696,6 @@ export function createSmartMongoRepo<
       }
 
       let mongoFilter = convertFilter(filter);
-
-      const mongoProjection = options.projection
-        ? Object.fromEntries(
-            Object.keys(options.projection)
-              .filter((k) => k !== idKey)
-              .map((k) => [k, 1])
-          )
-        : undefined;
 
       // Build sort option from orderBy
       const sortOption: Record<string, 1 | -1> = {};
@@ -793,9 +757,7 @@ export function createSmartMongoRepo<
       let cursor = collection
         .find(
           applyConstraints(mongoFilter),
-          withSessionOptions(
-            mongoProjection ? { projection: mongoProjection } : undefined
-          )
+          withSessionOptions(getProjection(options.projection))
         )
         .sort(sortOption);
 
