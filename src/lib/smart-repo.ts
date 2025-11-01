@@ -26,7 +26,7 @@ export type CountOptions = {
 };
 
 export type FindPageOptions<T> = {
-  startAfter?: string;
+  cursor?: string;
   limit: number;
   orderBy?: OrderBy<T>;
   onScopeBreach?: 'empty' | 'error';
@@ -34,10 +34,9 @@ export type FindPageOptions<T> = {
 
 export type PageResult<T> = {
   items: T[];
-  nextStartAfter: string | undefined;
+  nextCursor: string | undefined;
 };
 
-// database-agnostic interface (limited to simple CRUD operations)
 export type SmartRepo<
   T extends { id: string },
   Scope extends Partial<T> = {},

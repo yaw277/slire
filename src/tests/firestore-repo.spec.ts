@@ -1462,24 +1462,24 @@ describe('createSmartFirestoreRepo', function () {
       // First page
       const page1 = await repo.findPage({}, { limit: 2 });
       expect(page1.items).toHaveLength(2);
-      expect(page1.nextStartAfter).toBeDefined();
+      expect(page1.nextCursor).toBeDefined();
 
       // Second page using cursor
       const page2 = await repo.findPage(
         {},
-        { limit: 2, startAfter: page1.nextStartAfter }
+        { limit: 2, cursor: page1.nextCursor }
       );
       expect(page2.items).toHaveLength(2);
-      expect(page2.nextStartAfter).toBeDefined();
+      expect(page2.nextCursor).toBeDefined();
       expect(page2.items[0].id).not.toBe(page1.items[0].id);
 
       // Third page (last page with 1 item)
       const page3 = await repo.findPage(
         {},
-        { limit: 2, startAfter: page2.nextStartAfter }
+        { limit: 2, cursor: page2.nextCursor }
       );
       expect(page3.items).toHaveLength(1);
-      expect(page3.nextStartAfter).toBeUndefined();
+      expect(page3.nextCursor).toBeUndefined();
     });
 
     it('should work with filters', async () => {
@@ -1554,7 +1554,7 @@ describe('createSmartFirestoreRepo', function () {
 
       const page = await repo.findPage({ name: 'NonExistent' }, { limit: 10 });
       expect(page.items).toHaveLength(0);
-      expect(page.nextStartAfter).toBeUndefined();
+      expect(page.nextCursor).toBeUndefined();
     });
 
     it('should handle scope breach with default empty behavior', async () => {
@@ -1569,7 +1569,7 @@ describe('createSmartFirestoreRepo', function () {
         { limit: 10 }
       );
       expect(page.items).toHaveLength(0);
-      expect(page.nextStartAfter).toBeUndefined();
+      expect(page.nextCursor).toBeUndefined();
     });
 
     it('should throw on scope breach when configured', async () => {
@@ -1596,9 +1596,9 @@ describe('createSmartFirestoreRepo', function () {
       await expect(
         repo.findPage(
           {},
-          { limit: 10, startAfter: 'invalid-cursor-that-does-not-exist' }
+          { limit: 10, cursor: 'invalid-cursor-that-does-not-exist' }
         )
-      ).rejects.toThrow('Invalid startAfter cursor');
+      ).rejects.toThrow('Invalid cursor');
     });
 
     it('should work with large page sizes', async () => {
@@ -1615,7 +1615,7 @@ describe('createSmartFirestoreRepo', function () {
 
       const page = await repo.findPage({}, { limit: 100 });
       expect(page.items).toHaveLength(3);
-      expect(page.nextStartAfter).toBeUndefined();
+      expect(page.nextCursor).toBeUndefined();
     });
 
     it('should work with specifications', async () => {
@@ -1645,13 +1645,13 @@ describe('createSmartFirestoreRepo', function () {
       expect(page1.items).toHaveLength(2);
       expect(page1.items[0].name).toBe('Alice');
       expect(page1.items.every((u) => u.isActive)).toBe(true);
-      expect(page1.nextStartAfter).toBeDefined();
+      expect(page1.nextCursor).toBeDefined();
 
       // Second page
       const page2 = await repo.findPageBySpec(activeUsersSpec, {
         limit: 2,
         orderBy: { name: 'asc' },
-        startAfter: page1.nextStartAfter,
+        cursor: page1.nextCursor,
       });
       expect(page2.items).toHaveLength(2);
       expect(page2.items.every((u) => u.isActive)).toBe(true);

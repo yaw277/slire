@@ -483,14 +483,14 @@ Provides efficient cursor-based pagination for large datasets. Unlike `find().sk
 The `FindPageOptions` parameter includes:
 
 - `limit: number` - Maximum number of items per page (required)
-- `startAfter?: string` - Cursor from previous page's `nextStartAfter` (optional)
+- `cursor?: string` - Cursor from previous page's `nextCursor` (optional)
 - `orderBy?: Record<string, 1 | -1 | 'asc' | 'desc' | 'ascending' | 'descending'>` - Sort order (dot notation supported)
 - `onScopeBreach?: 'empty' | 'error'` - Handle scope breaches (default: 'empty')
 
 Returns `PageResult<T>` containing:
 
 - `items: T[]` - The page of results (up to `limit` items)
-- `nextStartAfter: string | undefined` - Cursor for next page (undefined when no more results)
+- `nextCursor: string | undefined` - Cursor for next page (undefined when no more results)
 
 **Usage Examples:**
 
@@ -503,13 +503,13 @@ const page1 = await repo.findPage(
 
 // Subsequent pages using cursor
 let currentPage = page1;
-while (currentPage.nextStartAfter) {
+while (currentPage.nextCursor) {
   currentPage = await repo.findPage(
     { status: 'active' },
     {
       limit: 20,
       orderBy: { createdAt: 'desc' },
-      startAfter: currentPage.nextStartAfter,
+      cursor: currentPage.nextCursor,
     }
   );
   // Process currentPage.items
@@ -577,7 +577,7 @@ const page1 = await repo.findPageBySpec(activeUsersSpec, {
 const page2 = await repo.findPageBySpec(activeUsersSpec, {
   limit: 20,
   orderBy: { createdAt: 'desc' },
-  startAfter: page1.nextStartAfter,
+  cursor: page1.nextCursor,
 });
 ```
 

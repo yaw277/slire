@@ -1351,11 +1351,11 @@ describe('createSmartMongoRepo', function () {
     const pages = async (repo: any, filter: any, opts: any) => {
       const result: any[] = [];
       let page = await repo.findPage(filter, opts);
-      while (page.nextStartAfter) {
+      while (page.nextCursor) {
         result.push(page.items);
         page = await repo.findPage(filter, {
           ...opts,
-          startAfter: page.nextStartAfter,
+          cursor: page.nextCursor,
         });
       }
       result.push(page.items);
@@ -1451,7 +1451,7 @@ describe('createSmartMongoRepo', function () {
         'Charlie-35-id-001',
         'Charlie-35-id-000',
       ]);
-      expect(page.nextStartAfter).toBeUndefined();
+      expect(page.nextCursor).toBeUndefined();
     });
 
     it('should handle empty results', async () => {
@@ -1462,7 +1462,7 @@ describe('createSmartMongoRepo', function () {
 
       const page = await repo.findPage({ name: 'NonExistent' }, { limit: 10 });
       expect(page.items).toHaveLength(0);
-      expect(page.nextStartAfter).toBeUndefined();
+      expect(page.nextCursor).toBeUndefined();
     });
 
     it('should handle scope breach with default empty behavior', async () => {
@@ -1477,7 +1477,7 @@ describe('createSmartMongoRepo', function () {
         { limit: 10 }
       );
       expect(page.items).toHaveLength(0);
-      expect(page.nextStartAfter).toBeUndefined();
+      expect(page.nextCursor).toBeUndefined();
     });
 
     it('should throw on scope breach when configured', async () => {
@@ -1502,11 +1502,8 @@ describe('createSmartMongoRepo', function () {
       });
 
       await expect(
-        repo.findPage(
-          {},
-          { limit: 10, startAfter: new ObjectId().toHexString() }
-        )
-      ).rejects.toThrow('Invalid startAfter cursor: document not found');
+        repo.findPage({}, { limit: 10, cursor: new ObjectId().toHexString() })
+      ).rejects.toThrow('Invalid cursor: document not found');
     });
 
     it('should throw with invalid cursor (no ObjectId)', async () => {
@@ -1516,8 +1513,8 @@ describe('createSmartMongoRepo', function () {
       });
 
       await expect(
-        repo.findPage({}, { limit: 10, startAfter: 'not-an-object-id' })
-      ).rejects.toThrow(/Invalid startAfter cursor: input must be/);
+        repo.findPage({}, { limit: 10, cursor: 'not-an-object-id' })
+      ).rejects.toThrow(/Invalid cursor: input must be/);
     });
 
     it('should throw with invalid cursor (scope breach)', async () => {
@@ -1535,8 +1532,8 @@ describe('createSmartMongoRepo', function () {
       });
 
       await expect(
-        scoped.findPage({}, { limit: 10, startAfter: id })
-      ).rejects.toThrow('Invalid startAfter cursor: document not found');
+        scoped.findPage({}, { limit: 10, cursor: id })
+      ).rejects.toThrow('Invalid cursor: document not found');
     });
 
     it('should throw with invalid cursor (soft-deleted)', async () => {
@@ -1550,8 +1547,8 @@ describe('createSmartMongoRepo', function () {
       await repo.delete(id);
 
       await expect(
-        repo.findPage({}, { limit: 10, startAfter: id })
-      ).rejects.toThrow('Invalid startAfter cursor: document not found');
+        repo.findPage({}, { limit: 10, cursor: id })
+      ).rejects.toThrow('Invalid cursor: document not found');
     });
 
     it('should work with large page sizes', async () => {
@@ -1568,7 +1565,7 @@ describe('createSmartMongoRepo', function () {
 
       const page = await repo.findPage({}, { limit: 100 });
       expect(page.items).toHaveLength(3);
-      expect(page.nextStartAfter).toBeUndefined();
+      expect(page.nextCursor).toBeUndefined();
     });
 
     it('should work with limit 0', async () => {
@@ -1585,7 +1582,7 @@ describe('createSmartMongoRepo', function () {
 
       const page = await repo.findPage({}, { limit: 0 });
       expect(page.items).toHaveLength(0);
-      expect(page.nextStartAfter).toBeUndefined();
+      expect(page.nextCursor).toBeUndefined();
     });
 
     it('should work with negative limit', async () => {
@@ -1602,7 +1599,7 @@ describe('createSmartMongoRepo', function () {
 
       const page = await repo.findPage({}, { limit: -1 });
       expect(page.items).toHaveLength(0);
-      expect(page.nextStartAfter).toBeUndefined();
+      expect(page.nextCursor).toBeUndefined();
     });
 
     it('should work with specifications', async () => {
@@ -1629,15 +1626,15 @@ describe('createSmartMongoRepo', function () {
         orderBy: { name: 'asc' },
       });
       expect(page1.items.map((i) => i.name)).toEqual(['Alice', 'Bob']);
-      expect(page1.nextStartAfter).toBeDefined();
+      expect(page1.nextCursor).toBeDefined();
 
       const page2 = await repo.findPageBySpec(activeUsersSpec, {
         limit: 2,
         orderBy: { name: 'asc' },
-        startAfter: page1.nextStartAfter,
+        cursor: page1.nextCursor,
       });
       expect(page2.items.map((i) => i.name)).toEqual(['David', 'Eve']);
-      expect(page2.nextStartAfter).toBeUndefined();
+      expect(page2.nextCursor).toBeUndefined();
     });
 
     describe('cursor pagination with custom orderBy', () => {

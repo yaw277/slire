@@ -18,6 +18,7 @@ import {
   SortDirection,
   Specification,
   UpdateOperation,
+  type FindPageOptions,
 } from './smart-repo';
 import { Prettify } from './types';
 
@@ -672,27 +673,21 @@ export function createSmartMongoRepo<
 
     findPage: async <P extends Projection<T> | undefined>(
       filter: Partial<T>,
-      options: {
-        startAfter?: string;
-        limit: number;
-        orderBy?: OrderBy<T>;
-        onScopeBreach?: 'empty' | 'error';
-        projection?: P;
-      }
+      options: FindPageOptions<T> & { projection?: P }
     ): Promise<{
       items: Projected<T, P>[];
-      nextStartAfter: string | undefined;
+      nextCursor: string | undefined;
     }> => {
       if (config.scopeBreach(filter)) {
         const mode = options.onScopeBreach ?? 'empty';
         if (mode === 'error') {
           throw new Error('Scope breach detected in findPage filter');
         }
-        return { items: [], nextStartAfter: undefined };
+        return { items: [], nextCursor: undefined };
       }
 
       if (options.limit < 1) {
-        return { items: [], nextStartAfter: undefined };
+        return { items: [], nextCursor: undefined };
       }
 
       let mongoFilter = convertFilter(filter);
@@ -716,15 +711,15 @@ export function createSmartMongoRepo<
         sortOption._id = 1;
       }
 
-      // Apply startAfter cursor if provided
-      if (options.startAfter) {
+      // Apply cursor if provided
+      if (options.cursor) {
         let cursorId;
         try {
-          cursorId = toMongoId(options.startAfter);
+          cursorId = toMongoId(options.cursor);
         } catch (error) {
           throw new Error(
-            `Invalid startAfter cursor: ${
-              error instanceof Error ? error.message : options.startAfter
+            `Invalid cursor: ${
+              error instanceof Error ? error.message : options.cursor
             }`
           );
         }
@@ -738,7 +733,7 @@ export function createSmartMongoRepo<
           })
         );
         if (!startAfterDoc) {
-          throw new Error(`Invalid startAfter cursor: document not found`);
+          throw new Error(`Invalid cursor: document not found`);
         }
 
         mongoFilter = {
@@ -771,29 +766,23 @@ export function createSmartMongoRepo<
         .map((doc) => fromMongoDoc<P>(doc, options.projection as P));
 
       // Get the cursor for the next page (last document's _id)
-      const nextStartAfter =
+      const nextCursor =
         hasMore && items.length > 0
           ? fromMongoId(docs[options.limit - 1]._id)
           : undefined;
 
       return {
         items: items as Projected<T, P>[],
-        nextStartAfter,
+        nextCursor,
       };
     },
 
     findPageBySpec: async <P extends Projection<T>>(
       spec: Specification<T>,
-      options: {
-        startAfter?: string;
-        limit: number;
-        orderBy?: OrderBy<T>;
-        onScopeBreach?: 'empty' | 'error';
-        projection?: P;
-      }
+      options: FindPageOptions<T> & { projection?: P }
     ): Promise<{
       items: Projected<T, P>[];
-      nextStartAfter: string | undefined;
+      nextCursor: string | undefined;
     }> => {
       return repo.findPage<P>(spec.toFilter(), options as any);
     },

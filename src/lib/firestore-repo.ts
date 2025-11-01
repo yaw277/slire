@@ -28,6 +28,7 @@ import {
   SortDirection,
   Specification,
   UpdateOperation,
+  type FindPageOptions,
 } from './smart-repo';
 import { Prettify } from './types';
 
@@ -747,23 +748,17 @@ export function createSmartFirestoreRepo<
 
     findPage: async <P extends Projection<T> | undefined>(
       filter: Partial<T>,
-      options: {
-        startAfter?: string;
-        limit: number;
-        orderBy?: OrderBy<T>;
-        onScopeBreach?: 'empty' | 'error';
-        projection?: P;
-      }
+      options: FindPageOptions<T> & { projection?: P }
     ): Promise<{
       items: Projected<T, P>[];
-      nextStartAfter: string | undefined;
+      nextCursor: string | undefined;
     }> => {
       if (config.scopeBreach(filter)) {
         const mode = options.onScopeBreach ?? 'empty';
         if (mode === 'error') {
           throw new Error('Scope breach detected in findPage filter');
         }
-        return { items: [], nextStartAfter: undefined };
+        return { items: [], nextCursor: undefined };
       }
 
       let query: any = collection;
@@ -791,16 +786,16 @@ export function createSmartFirestoreRepo<
         query = query.orderBy('__name__', 'asc');
       }
 
-      // Apply startAfter cursor if provided
-      if (options.startAfter) {
-        const docRef = collection.doc(options.startAfter);
+      // Apply cursor if provided
+      if (options.cursor) {
+        const docRef = collection.doc(options.cursor);
         const docSnapshot = await (transaction
           ? transaction.get(docRef)
           : docRef.get());
         if (docSnapshot.exists) {
           query = query.startAfter(docSnapshot);
         } else {
-          throw new Error(`Invalid startAfter cursor: ${options.startAfter}`);
+          throw new Error(`Invalid cursor: ${options.cursor}`);
         }
       }
 
@@ -829,27 +824,21 @@ export function createSmartFirestoreRepo<
         .map((doc: any) => fromFirestoreDoc(doc, options.projection));
 
       // Get the cursor for the next page (last document's id)
-      const nextStartAfter =
+      const nextCursor =
         hasMore && items.length > 0 ? docs[options.limit - 1].id : undefined;
 
       return {
         items: items as Projected<T, P>[],
-        nextStartAfter,
+        nextCursor,
       };
     },
 
     findPageBySpec: async <P extends Projection<T>>(
       spec: Specification<T>,
-      options: {
-        startAfter?: string;
-        limit: number;
-        orderBy?: OrderBy<T>;
-        onScopeBreach?: 'empty' | 'error';
-        projection?: P;
-      }
+      options: FindPageOptions<T> & { projection?: P }
     ): Promise<{
       items: Projected<T, P>[];
-      nextStartAfter: string | undefined;
+      nextCursor: string | undefined;
     }> => {
       return repo.findPage<P>(spec.toFilter(), options as any);
     },
