@@ -1,4 +1,4 @@
-import { chunk } from 'lodash-es';
+import chunk from 'lodash/chunk'
 import { ClientSession, Collection, MongoClient, ObjectId } from 'mongodb';
 import { getMongoMinFilter } from './get-mongo-min-filter';
 import { QueryStream } from './query-stream';

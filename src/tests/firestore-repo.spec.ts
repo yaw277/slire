@@ -1,6 +1,7 @@
 import { CollectionReference } from '@google-cloud/firestore';
-import { omit, range, sortBy } from 'lodash-es';
-import { v4 as uuidv4 } from 'uuid';
+import omit from 'lodash/omit'
+import range from 'lodash/range'
+import sortBy from 'lodash/sortBy'
 import {
   convertFirestoreTimestamps,
   createSmartFirestoreRepo,
@@ -3668,7 +3669,7 @@ type TestEntityWithTimestamps = TestEntity & {
 
 function createTestEntity(overrides: Partial<TestEntity> = {}): TestEntity {
   return {
-    id: uuidv4(),
+    id: '',
     tenantId: 'org123',
     name: 'Test User',
     email: 'test@example.com',

@@ -10,7 +10,7 @@ import {
   Timestamp,
   Transaction,
 } from '@google-cloud/firestore';
-import { chunk } from 'lodash-es';
+import chunk from 'lodash/chunk'
 import { QueryStream } from './query-stream';
 import {
   ManagedFields,

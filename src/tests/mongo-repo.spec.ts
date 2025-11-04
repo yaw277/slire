@@ -1,6 +1,7 @@
-import { omit, range, sortBy } from 'lodash-es';
+import omit from 'lodash/omit'
+import range from 'lodash/range'
+import sortBy from 'lodash/sortBy'
 import { Collection, ObjectId } from 'mongodb';
-import { v4 as uuidv4 } from 'uuid';
 import { createSmartMongoRepo } from '../lib/mongo-repo';
 import {
   combineSpecs,
@@ -3945,7 +3946,7 @@ type TestEntity = {
 
 function createTestEntity(overrides: Partial<TestEntity> = {}): TestEntity {
   return {
-    id: uuidv4(),
+    id: '',
     tenantId: 'org123',
     name: 'Test User',
     email: 'test@example.com',

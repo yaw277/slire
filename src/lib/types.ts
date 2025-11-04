@@ -1,3 +1,5 @@
+export type Maybe<T> = T | undefined | null;
+
 // utility type to expand complex types for better IDE tooltips
 export type Prettify<T> = {
   [K in keyof T]: T[K];
