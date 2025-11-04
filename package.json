@@ -19,6 +19,9 @@
     "build": "tsup",
     "test": "jest",
     "clean": "rimraf dist",
+    "prepublishOnly": "npm run clean && npm run build && npm test",
+    "publish:dry": "npm publish --dry-run",
+    "release": "npm run clean && npm run build && npm test && npm publish --access public --provenance",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier . --check",
@@ -30,6 +33,19 @@
   },
   "dependencies": {
     "lodash": "^4.17.21"
+  },
+  "keywords": [
+    "firestore",
+    "mongodb",
+    "repository",
+    "data-access",
+    "typescript",
+    "node",
+    "stream"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
   },
   "devDependencies": {
     "@testcontainers/mongodb": "^11.7.2",
