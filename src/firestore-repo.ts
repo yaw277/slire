@@ -27,14 +27,14 @@ import {
   Projected,
   Projection,
   repoConfig,
-  RepositoryConfig,
+  RepoConfig,
   WriteOp,
 } from './repo-config';
 import { Prettify } from './types';
 
 // Firestore-specific repository config that excludes 'bounded' strategy
 export type FirestoreRepositoryConfig<T> = Omit<
-  RepositoryConfig<T>,
+  RepoConfig<T>,
   'traceStrategy'
 > & {
   traceStrategy?: 'latest' | 'unbounded';
@@ -49,7 +49,7 @@ const FIRESTORE_IN_LIMIT = 10; // conservative 'in' operator limit across SDKs
 export type FirestoreRepo<
   T extends { id: string },
   Scope extends Partial<T> = {},
-  Config extends RepositoryConfig<T> = {},
+  Config extends RepoConfig<T> = {},
   Managed extends ManagedFields<T, Config, Scope> = ManagedFields<
     T,
     Config,
@@ -101,7 +101,7 @@ export type FirestoreRepo<
  * ```
  *
  */
-export function createSmartFirestoreRepo<
+export function createFirestoreRepo<
   T extends { id: string },
   Scope extends Partial<T> = {},
   Config extends FirestoreRepositoryConfig<T> = {},
@@ -914,7 +914,7 @@ export function createSmartFirestoreRepo<
 
     // Factory method for transaction-aware repository
     withTransaction: (tx: Transaction) => {
-      return createSmartFirestoreRepo({
+      return createFirestoreRepo({
         collection,
         firestore,
         scope,

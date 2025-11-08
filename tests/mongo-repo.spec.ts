@@ -2,7 +2,7 @@ import omit from 'lodash/omit';
 import range from 'lodash/range';
 import sortBy from 'lodash/sortBy';
 import { Collection, ObjectId } from 'mongodb';
-import { createSmartMongoRepo } from '../src/mongo-repo';
+import { createMongoRepo } from '../src/mongo-repo';
 import {
   combineSpecs,
   CreateManyPartialFailure,
@@ -41,7 +41,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('create', () => {
     it('should create a new entity and return its id', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -64,7 +64,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should generate unique ids for different entities', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -78,7 +78,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should handle entities with optional fields', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -100,7 +100,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should recursively filter undefined properties (not store as null)', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -143,7 +143,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should strip system-managed fields from input entities during create', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: {
@@ -205,7 +205,7 @@ describe('createSmartMongoRepo', function () {
         return db.collection<ExtendedTestEntity>(COLLECTION_NAME);
       }
 
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollectionWithExtended(),
         mongoClient: mongo.client,
         options: {
@@ -261,7 +261,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('createMany', () => {
     it('should create multiple entities and return their ids', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -300,7 +300,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should generate unique ids for all entities', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -319,7 +319,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should handle empty array', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -330,7 +330,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should handle entities with optional fields', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -376,7 +376,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should handle large batches with chunking', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -411,7 +411,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should throw CreateManyPartialFailure with inserted/failed ids on duplicate ids within a single batch', async () => {
       // generate identical ids to force only the first upsert to insert, others match and do not upsert
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { generateId: () => 'DUPLICATE-ID' },
@@ -450,7 +450,7 @@ describe('createSmartMongoRepo', function () {
         return counter <= 1000 ? `ID-${counter}` : 'DUP-LAST-BATCH';
       };
 
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { generateId },
@@ -480,7 +480,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('getById', () => {
     it('should return the entity when it exists', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -501,7 +501,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should return undefined when entity does not exist', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -510,7 +510,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should support projections', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -531,7 +531,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should return undefined for scope-breached docs even if projection excludes scope fields', async () => {
-      const base = createSmartMongoRepo({
+      const base = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -539,7 +539,7 @@ describe('createSmartMongoRepo', function () {
         createTestEntity({ tenantId: 'tenant-A', name: 'Scoped' }),
       );
 
-      const scoped = createSmartMongoRepo({
+      const scoped = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'tenant-B' },
@@ -552,7 +552,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('getByIds', () => {
     it('should return entities that exist and ids that do not exist', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -588,7 +588,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should return empty arrays when no entities exist', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -602,7 +602,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should support projections', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -637,7 +637,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('update', () => {
     it('should update an existing entity', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -660,7 +660,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should unset fields when specified', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -683,7 +683,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should handle set and unset in the same operation', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -716,7 +716,7 @@ describe('createSmartMongoRepo', function () {
         description: string | undefined;
       };
 
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection:
           testCollection() as unknown as Collection<EntityWithUndefinedField>,
         mongoClient: mongo.client,
@@ -748,7 +748,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should allow unsetting nested optional properties using dot notation', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -782,7 +782,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should allow unsetting a single optional property as string (not array)', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -816,7 +816,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should not affect non-existent entities', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -834,7 +834,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should recursively filter undefined properties in set operations (not store as null)', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -890,7 +890,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should update existing entity in scoped collection', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -908,7 +908,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should reject update that attempts to change scope', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -935,7 +935,7 @@ describe('createSmartMongoRepo', function () {
         _v: number;
         _createdAt: Date;
       };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection:
           testCollection() as unknown as Collection<EntityWithManagedFields>,
         mongoClient: mongo.client,
@@ -965,7 +965,7 @@ describe('createSmartMongoRepo', function () {
         _v: number;
         _createdAt: Date;
       };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: rawTestCollection() as Collection<EntityWithManagedFields>,
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -992,7 +992,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('updateMany', () => {
     it('should update many entities and ignore non-existing ids', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1017,7 +1017,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('delete', () => {
     it('should delete an existing entity', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1032,7 +1032,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should not throw on non-existent entities', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1042,7 +1042,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('deleteMany', () => {
     it('should delete multiple entities', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1060,7 +1060,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should handle large batches with chunking', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1078,7 +1078,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should handle mixed existing and non-existing ids', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1102,7 +1102,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('find', () => {
     it('should return empty on scope-breach by default', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -1117,7 +1117,7 @@ describe('createSmartMongoRepo', function () {
       expect(results).toEqual([]);
     });
     it('should find entities matching the filter', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1141,7 +1141,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should return all entities if filter is empty', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1158,7 +1158,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should return empty array when no entities match', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1170,7 +1170,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should throw on scope-breach when configured to error', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -1182,7 +1182,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should support streaming operations (skip, take, toArray)', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1205,7 +1205,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should support orderBy option', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1240,7 +1240,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should support projections', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1261,7 +1261,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should support projections with id field', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1281,7 +1281,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should handle projections with no matching entities', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1298,7 +1298,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should support filtering by id field', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { generateId: 'server' },
@@ -1319,7 +1319,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should return empty when filter breaches scope even if projection excludes scope fields', async () => {
-      const base = createSmartMongoRepo({
+      const base = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1327,7 +1327,7 @@ describe('createSmartMongoRepo', function () {
         createTestEntity({ tenantId: 'tenant-A', name: 'Scoped' }),
       );
 
-      const scoped = createSmartMongoRepo({
+      const scoped = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'tenant-B' },
@@ -1351,7 +1351,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('findPage', () => {
     it('should return a page of results with pagination cursor', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { generateId: ascendingIds() }, // as we're implicitly sorting by id
@@ -1379,7 +1379,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should work with filters', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { generateId: ascendingIds() },
@@ -1402,7 +1402,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should work with custom orderBy', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { generateId: ascendingIds() },
@@ -1443,7 +1443,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should handle empty results', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1454,7 +1454,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should handle scope breach with default empty behavior', async () => {
-      const scoped = createSmartMongoRepo({
+      const scoped = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'tenant-A' },
@@ -1469,7 +1469,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should throw on scope breach when configured', async () => {
-      const scoped = createSmartMongoRepo({
+      const scoped = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'tenant-A' },
@@ -1484,7 +1484,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should throw with invalid cursor (not found)', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1495,7 +1495,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should throw with invalid cursor (no ObjectId)', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1506,14 +1506,14 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should throw with invalid cursor (scope breach)', async () => {
-      const unscoped = createSmartMongoRepo({
+      const unscoped = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
 
       const id = await unscoped.create(createTestEntity({ tenantId: 'acme' }));
 
-      const scoped = createSmartMongoRepo({
+      const scoped = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'tenant-A' },
@@ -1525,7 +1525,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should throw with invalid cursor (soft-deleted)', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { softDelete: true },
@@ -1540,7 +1540,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should work with large page sizes', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1557,7 +1557,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should work with limit 0', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1574,7 +1574,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should work with negative limit', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1591,7 +1591,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should work with specifications', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1627,7 +1627,7 @@ describe('createSmartMongoRepo', function () {
 
     describe('cursor pagination with custom orderBy', () => {
       it('should paginate correctly with single field ascending order', async () => {
-        const repo = createSmartMongoRepo({
+        const repo = createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: { generateId: ascendingIds() },
@@ -1660,7 +1660,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       it('should paginate correctly with single field descending order', async () => {
-        const repo = createSmartMongoRepo({
+        const repo = createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: { generateId: ascendingIds() },
@@ -1688,7 +1688,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       it('should paginate correctly with multi-field ordering (mixed directions)', async () => {
-        const repo = createSmartMongoRepo({
+        const repo = createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: { generateId: ascendingIds() },
@@ -1726,7 +1726,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       it('should handle nullish values correctly in ascending order', async () => {
-        const repo = createSmartMongoRepo({
+        const repo = createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: { generateId: ascendingIds() },
@@ -1758,7 +1758,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       it('should handle null values correctly in descending order', async () => {
-        const repo = createSmartMongoRepo({
+        const repo = createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: { generateId: ascendingIds() },
@@ -1790,7 +1790,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       it('should work correctly with filters and custom ordering', async () => {
-        const repo = createSmartMongoRepo({
+        const repo = createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: { generateId: ascendingIds() },
@@ -1816,7 +1816,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       it('should handle documents with same sort field values using _id as tiebreaker', async () => {
-        const repo = createSmartMongoRepo({
+        const repo = createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: { generateId: ascendingIds() },
@@ -1844,7 +1844,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       it('should work with nested field paths in orderBy', async () => {
-        const repo = createSmartMongoRepo({
+        const repo = createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: { generateId: ascendingIds() },
@@ -1874,7 +1874,7 @@ describe('createSmartMongoRepo', function () {
       });
 
       it('should correctly handle id in orderBy and ignore fields after it', async () => {
-        const repo = createSmartMongoRepo({
+        const repo = createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: { generateId: ascendingIds() },
@@ -1908,7 +1908,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('count', () => {
     it('should count entities matching the filter', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1931,7 +1931,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should return 0 when no entities match', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1944,14 +1944,14 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should return 0 on scope-breach by default and throw when configured', async () => {
-      const unscoped = createSmartMongoRepo({
+      const unscoped = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
 
       await unscoped.create(createTestEntity({ tenantId: 'other' }));
 
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -1965,7 +1965,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should support counting by id field', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { generateId: 'server' },
@@ -1981,7 +1981,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should return 0 when counting by id that breaches scope', async () => {
-      const base = createSmartMongoRepo({
+      const base = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -1989,7 +1989,7 @@ describe('createSmartMongoRepo', function () {
         createTestEntity({ tenantId: 'tenant-A', name: 'Scoped' }),
       );
 
-      const scoped = createSmartMongoRepo({
+      const scoped = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'tenant-B' },
@@ -2001,7 +2001,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('findBySpec, countBySpec', () => {
     it('should support findBySpec and countBySpec with basic specifications', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -2038,7 +2038,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should support findBySpec with projections', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -2068,7 +2068,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should support specification composition with combineSpecs', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -2104,7 +2104,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should demonstrate approved specification pattern for security', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -2174,12 +2174,12 @@ describe('createSmartMongoRepo', function () {
 
   describe('scoping', () => {
     it('scoped repo only has access to entities matching the scope', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
 
-      const scopedRepo = createSmartMongoRepo({
+      const scopedRepo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -2205,7 +2205,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('adds scope when creating entities', async () => {
-      const scopedRepo = createSmartMongoRepo({
+      const scopedRepo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -2227,7 +2227,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should validate scope property values during create', async () => {
-      const scopedRepo = createSmartMongoRepo({
+      const scopedRepo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -2257,11 +2257,11 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should prevent updating scope properties', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
-      const scopedRepo = createSmartMongoRepo({
+      const scopedRepo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -2290,12 +2290,12 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should allow reading scope properties', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
 
-      const scopedRepo = createSmartMongoRepo({
+      const scopedRepo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -2329,12 +2329,12 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('supports multi-property scope', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
 
-      const scopedRepo = createSmartMongoRepo({
+      const scopedRepo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme', age: 30 },
@@ -2373,12 +2373,12 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('treats empty scope as no scope', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
 
-      const emptyScopedRepo = createSmartMongoRepo({
+      const emptyScopedRepo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: {},
@@ -2412,7 +2412,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('identity', () => {
     it('uses server-generated ids by default and does not mirror by default', async () => {
-      const repo = createSmartMongoRepo<TestEntity>({
+      const repo = createMongoRepo<TestEntity>({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { generateId: 'server' },
@@ -2430,7 +2430,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('mirrors id into document when mirrorId=true', async () => {
-      const repo = createSmartMongoRepo<TestEntity>({
+      const repo = createMongoRepo<TestEntity>({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { generateId: 'server', mirrorId: true },
@@ -2444,7 +2444,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('supports custom generateId function', async () => {
-      const repo = createSmartMongoRepo<TestEntity>({
+      const repo = createMongoRepo<TestEntity>({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { generateId: () => 'custom-xyz' },
@@ -2458,7 +2458,7 @@ describe('createSmartMongoRepo', function () {
 
     it('supports custom idKey without mirroring', async () => {
       type EntityWithAlias = TestEntity & { entityId: string };
-      const repo = createSmartMongoRepo<EntityWithAlias>({
+      const repo = createMongoRepo<EntityWithAlias>({
         collection: mongo.client
           .db()
           .collection(
@@ -2485,7 +2485,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('treats idKey as readonly on update', async () => {
-      const repo = createSmartMongoRepo<TestEntity>({
+      const repo = createMongoRepo<TestEntity>({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { generateId: 'server' },
@@ -2499,7 +2499,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('soft delete', () => {
     it('soft deleted entities stay in the database', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { softDelete: true },
@@ -2513,7 +2513,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('update should not touch soft-deleted entities by default', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { softDelete: true },
@@ -2529,7 +2529,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should not return soft-deleted entities in reads', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { softDelete: true },
@@ -2562,7 +2562,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should soft delete many', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { softDelete: true },
@@ -2585,7 +2585,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('trace timestamps', () => {
     it('should set timestamps when traceTimestamps enabled (app time)', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { softDelete: true, traceTimestamps: true },
@@ -2623,7 +2623,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should set timestamps using mongo server time', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { softDelete: true, traceTimestamps: 'server' },
@@ -2656,7 +2656,7 @@ describe('createSmartMongoRepo', function () {
     it('should use custom clock function', async () => {
       let t = new Date('2020-01-01T00:00:00Z');
       const clock = () => new Date(t);
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { softDelete: true, traceTimestamps: clock },
@@ -2693,7 +2693,7 @@ describe('createSmartMongoRepo', function () {
     }
 
     it('should expose timestamp fields in reads when configured as entity properties', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollectionWithTimestamps(),
         mongoClient: mongo.client,
         options: {
@@ -2720,7 +2720,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should support projections including timestamp fields', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollectionWithTimestamps(),
         mongoClient: mongo.client,
         options: {
@@ -2752,7 +2752,7 @@ describe('createSmartMongoRepo', function () {
       let testTime = new Date('2023-01-01T00:00:00Z');
       const clock = () => testTime;
 
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollectionWithTimestamps(),
         mongoClient: mongo.client,
         options: {
@@ -2784,7 +2784,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should prevent writing to configured timestamp fields', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollectionWithTimestamps(),
         mongoClient: mongo.client,
         options: {
@@ -2809,7 +2809,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should support partial timestamp configuration', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollectionWithTimestamps(),
         mongoClient: mongo.client,
         options: {
@@ -2838,7 +2838,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should automatically enable timestamps when timestampKeys are configured', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollectionWithTimestamps(),
         mongoClient: mongo.client,
         options: {
@@ -2866,7 +2866,7 @@ describe('createSmartMongoRepo', function () {
       let counter = 0;
       const customGenerateId = () => `custom-${++counter}`;
 
-      const customRepo = createSmartMongoRepo({
+      const customRepo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: {
@@ -2886,7 +2886,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('version counter', () => {
     it('should increment version with hidden field when version: true', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { version: true },
@@ -2918,7 +2918,7 @@ describe('createSmartMongoRepo', function () {
         return db.collection<VersionedEntity>(COLLECTION_NAME);
       }
 
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollectionVersioned(),
         mongoClient: mongo.client,
         options: { version: 'version' },
@@ -2938,7 +2938,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should increment version on soft delete', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { version: true, softDelete: true },
@@ -2960,7 +2960,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should work with bulk operations', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { version: true },
@@ -2990,7 +2990,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should not interfere when version is disabled', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -3014,7 +3014,7 @@ describe('createSmartMongoRepo', function () {
     it('buildUpdateOperation sets timestamps', async () => {
       let t = new Date('2020-01-01T00:00:00Z');
       const clock = () => t;
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         options: { traceTimestamps: clock },
@@ -3056,7 +3056,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('buildUpdateOperation prevents writing read-only props (runtime)', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -3077,7 +3077,7 @@ describe('createSmartMongoRepo', function () {
 
     it('buildUpdateOperation applies trace context', async () => {
       const traceContext = { userId: 'user123', requestId: 'req456' };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         traceContext,
@@ -3108,14 +3108,14 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('applyConstraints with default behavior', async () => {
-      const acmeRepo = createSmartMongoRepo({
+      const acmeRepo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
         options: { softDelete: true },
       });
 
-      const fooRepo = createSmartMongoRepo({
+      const fooRepo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'foo' },
@@ -3187,7 +3187,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('applyConstraints ignores soft-deleted entities by default', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -3227,7 +3227,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('transactions', () => {
     it('withSession should apply all operations within the same session', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -3265,7 +3265,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('runTransaction should execute all operations within a transaction', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -3299,7 +3299,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should rollback all changes when withSession transaction fails', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -3345,7 +3345,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should rollback all changes when runTransaction fails', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -3392,7 +3392,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should handle nested operations in runTransaction', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -3443,11 +3443,11 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should work with scoped repositories in transactions', async () => {
-      const baseRepo = createSmartMongoRepo({
+      const baseRepo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
-      const scopedRepo = createSmartMongoRepo({
+      const scopedRepo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         scope: { tenantId: 'acme' },
@@ -3480,7 +3480,7 @@ describe('createSmartMongoRepo', function () {
   describe('configuration validation', () => {
     it('should throw error when timestamp keys are duplicated', () => {
       expect(() => {
-        createSmartMongoRepo({
+        createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: {
@@ -3500,7 +3500,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should throw error when version key conflicts with timestamp key', () => {
       expect(() => {
-        createSmartMongoRepo({
+        createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: {
@@ -3521,7 +3521,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should throw error when soft delete key conflicts with other keys', () => {
       expect(() => {
-        createSmartMongoRepo({
+        createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: {
@@ -3542,7 +3542,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should not throw error when all keys are unique', () => {
       expect(() => {
-        createSmartMongoRepo({
+        createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           options: {
@@ -3565,7 +3565,7 @@ describe('createSmartMongoRepo', function () {
         _v: number;
       };
       expect(() =>
-        createSmartMongoRepo({
+        createMongoRepo({
           collection:
             testCollection() as unknown as Collection<EntityWithReadonlyFields>,
           mongoClient: mongo.client,
@@ -3589,7 +3589,7 @@ describe('createSmartMongoRepo', function () {
 
   describe('tracing', () => {
     it('should not apply trace when traceContext is not provided', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -3604,7 +3604,7 @@ describe('createSmartMongoRepo', function () {
     });
 
     it('should apply per-operation mergeTrace even without base traceContext', async () => {
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
       });
@@ -3627,7 +3627,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should apply trace with latest strategy by default', async () => {
       const traceContext = { userId: 'user123', requestId: 'req456' };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         traceContext,
@@ -3649,7 +3649,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should use custom traceKey when specified', async () => {
       const traceContext = { userId: 'user123' };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         traceContext,
@@ -3671,7 +3671,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should merge trace context in operations', async () => {
       const traceContext = { userId: 'user123', requestId: 'req456' };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         traceContext,
@@ -3696,7 +3696,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should use bounded strategy when configured', async () => {
       const traceContext = { userId: 'user123' };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         traceContext,
@@ -3735,7 +3735,7 @@ describe('createSmartMongoRepo', function () {
     it('should throw error when bounded strategy is used without traceLimit', () => {
       const traceContext = { userId: 'user123' };
       expect(() =>
-        createSmartMongoRepo({
+        createMongoRepo({
           collection: testCollection(),
           mongoClient: mongo.client,
           traceContext,
@@ -3748,7 +3748,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should apply trace to createMany operations', async () => {
       const traceContext = { userId: 'user123' };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         traceContext,
@@ -3776,7 +3776,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should apply trace to update operations', async () => {
       const traceContext = { userId: 'user123' };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         traceContext,
@@ -3803,7 +3803,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should apply trace to updateMany operations', async () => {
       const traceContext = { userId: 'user123' };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         traceContext,
@@ -3835,7 +3835,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should apply trace to soft delete operations', async () => {
       const traceContext = { userId: 'user123' };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         traceContext,
@@ -3862,7 +3862,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should not apply trace to hard delete operations', async () => {
       const traceContext = { userId: 'user123' };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         traceContext,
@@ -3885,7 +3885,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should include trace key in readonly keys', async () => {
       const traceContext = { userId: 'user123' };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         traceContext,
@@ -3902,7 +3902,7 @@ describe('createSmartMongoRepo', function () {
 
     it('should preserve traceContext in session-aware repositories', async () => {
       const traceContext = { userId: 'user123', sessionId: 'sess456' };
-      const repo = createSmartMongoRepo({
+      const repo = createMongoRepo({
         collection: testCollection(),
         mongoClient: mongo.client,
         traceContext,

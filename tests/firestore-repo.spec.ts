@@ -4,7 +4,7 @@ import range from 'lodash/range';
 import sortBy from 'lodash/sortBy';
 import {
   convertFirestoreTimestamps,
-  createSmartFirestoreRepo,
+  createFirestoreRepo,
 } from '../src/firestore-repo';
 import {
   combineSpecs,
@@ -56,7 +56,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('create', () => {
     it('should create a new entity and return its id', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -79,7 +79,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should generate unique ids for different entities', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -93,7 +93,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should handle entities with optional fields', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -115,7 +115,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should recursively filter undefined properties (not store as null)', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -148,7 +148,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should strip system-managed fields from input entities during create', async () => {
       const fixedTimestamp = new Date('2024-01-01T12:00:00.000Z');
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: {
@@ -202,7 +202,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should strip system-managed fields with custom timestamp keys during create', async () => {
       const fixedTimestamp = new Date('2024-02-15T10:30:00.000Z');
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: firestore.firestore.collection(
           COLLECTION_NAME,
         ) as CollectionReference<TestEntityWithTimestamps>,
@@ -239,7 +239,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('createMany', () => {
     it('should create multiple entities and return their ids', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -278,7 +278,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should generate unique ids for all entities', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -297,7 +297,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should handle empty array', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -308,7 +308,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should handle entities with optional fields', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -354,7 +354,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should recursively filter undefined properties', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -392,7 +392,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should handle large batches with chunking', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -432,7 +432,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should throw CreateManyPartialFailure on duplicate ids within a single batch (Firestore: entire batch fails)', async () => {
       // generate identical ids to force batch failure (Firestore batches are atomic)
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { generateId: () => 'DUPLICATE-ID' },
@@ -470,7 +470,7 @@ describe('createSmartFirestoreRepo', function () {
         return counter <= 1000 ? `ID-${counter}` : 'DUP-LAST-BATCH';
       };
 
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { generateId },
@@ -503,7 +503,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('getById', () => {
     it('should return the entity when it exists', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -524,7 +524,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should return null when entity does not exist', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -533,7 +533,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should support projections', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -553,7 +553,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should return entity even if configured scope mismatches (reads ignore scope)', async () => {
-      const base = createSmartFirestoreRepo({
+      const base = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -562,7 +562,7 @@ describe('createSmartFirestoreRepo', function () {
         createTestEntity({ tenantId: 'tenant-A', name: 'Scoped' }),
       );
 
-      const scoped = createSmartFirestoreRepo({
+      const scoped = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         scope: { tenantId: 'tenant-B' },
@@ -575,7 +575,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('getByIds', () => {
     it('should return entities that exist and ids that do not exist', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -604,7 +604,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should return empty arrays when no entities exist', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -614,7 +614,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should support projections', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -647,7 +647,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should return only active docs and list soft-deleted/non-existent in notFound (reads ignore scope)', async () => {
       // Prepare data in one collection
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true },
@@ -683,7 +683,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('update', () => {
     it('should update an existing entity', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -706,7 +706,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should unset fields when specified', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -729,7 +729,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should handle set and unset in the same operation', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -762,7 +762,7 @@ describe('createSmartFirestoreRepo', function () {
         description: string | undefined;
       };
 
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection:
           testCollection() as unknown as CollectionReference<EntityWithUndefinedField>,
         firestore: firestore.firestore,
@@ -794,7 +794,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should allow unsetting nested optional properties using dot notation', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -827,7 +827,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should allow unsetting a single optional property as string (not array)', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -860,7 +860,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should not affect non-existent entities', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -876,7 +876,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should recursively filter undefined properties in set operations (not store as null)', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -931,7 +931,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should reject update that attempts to change scope', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         scope: { tenantId: 'acme' },
@@ -958,7 +958,7 @@ describe('createSmartFirestoreRepo', function () {
         _v: number;
         _createdAt: Date;
       };
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection:
           testCollection() as unknown as CollectionReference<EntityWithManagedFields>,
         firestore: firestore.firestore,
@@ -988,7 +988,7 @@ describe('createSmartFirestoreRepo', function () {
         _v: number;
         _createdAt: Date;
       };
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection:
           rawTestCollection() as CollectionReference<EntityWithManagedFields>,
         firestore: firestore.firestore,
@@ -1014,7 +1014,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should not update a soft-deleted entity (id path, server-side filtered)', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true },
@@ -1034,7 +1034,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('updateMany', () => {
     it('should update many entities and ignore non-existing ids', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1057,7 +1057,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should update only active entities (skip soft-deleted) in bulk', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true },
@@ -1088,7 +1088,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('delete', () => {
     it('should delete an existing entity', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1103,7 +1103,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should not throw on non-existent entities', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1113,7 +1113,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('deleteMany', () => {
     it('should delete multiple entities', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1131,7 +1131,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should handle large batches with chunking', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1149,7 +1149,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should handle mixed existing and non-existing ids', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1167,7 +1167,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should soft delete only active docs and ignore already soft-deleted/non-existing', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true },
@@ -1199,7 +1199,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('find', () => {
     it('should find entities matching the filter', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1223,7 +1223,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should return all entities if filter is empty', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1240,7 +1240,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should return empty array when no entities match', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1252,7 +1252,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should support streaming operations (skip, take, toArray)', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1275,7 +1275,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should support orderBy option', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1310,7 +1310,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should support projections', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1331,7 +1331,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should support projections with id field', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1351,7 +1351,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should handle projections with no matching entities', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1369,7 +1369,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should support filtering by id field', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1391,7 +1391,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should return scope-breaching docs included in a path-scoped collection (no scope filter on reads)', async () => {
       const scopedCollection = scopedTestCollection('tenant-A');
-      const base = createSmartFirestoreRepo({
+      const base = createFirestoreRepo({
         collection: scopedCollection,
         firestore: firestore.firestore,
       });
@@ -1399,7 +1399,7 @@ describe('createSmartFirestoreRepo', function () {
         createTestEntity({ tenantId: 'wrong-tenant', name: 'Scoped' }),
       );
 
-      const scoped = createSmartFirestoreRepo({
+      const scoped = createFirestoreRepo({
         collection: scopedCollection,
         firestore: firestore.firestore,
         scope: { tenantId: 'tenant-A' },
@@ -1413,7 +1413,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should return empty on scope-breach by default', async () => {
-      const unscoped = createSmartFirestoreRepo({
+      const unscoped = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1423,7 +1423,7 @@ describe('createSmartFirestoreRepo', function () {
         createTestEntity({ tenantId: 'other', name: 'OutOfScope' }),
       ]);
 
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         scope: { tenantId: 'acme' },
@@ -1434,7 +1434,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should throw on scope-breach when configured to error', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         scope: { tenantId: 'acme' },
@@ -1448,7 +1448,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('findPage', () => {
     it('should return a page of results with pagination cursor', async () => {
-      const repo = createSmartFirestoreRepo<TestEntity>({
+      const repo = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { generateId: ascendingIds() },
@@ -1476,7 +1476,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should work with filters', async () => {
-      const repo = createSmartFirestoreRepo<TestEntity>({
+      const repo = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { generateId: ascendingIds() },
@@ -1499,7 +1499,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should work with custom orderBy', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { generateId: ascendingIds(), mirrorId: true },
@@ -1540,7 +1540,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should handle empty results', async () => {
-      const repo = createSmartFirestoreRepo<TestEntity>({
+      const repo = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1551,7 +1551,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should handle scope breach with default empty behavior', async () => {
-      const scoped = createSmartFirestoreRepo<TestEntity>({
+      const scoped = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
         firestore: firestore.firestore,
         scope: { tenantId: 'tenant-A' },
@@ -1566,7 +1566,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should throw on scope breach when configured', async () => {
-      const scoped = createSmartFirestoreRepo<TestEntity>({
+      const scoped = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
         firestore: firestore.firestore,
         scope: { tenantId: 'tenant-A' },
@@ -1581,7 +1581,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should throw with invalid cursor (not found)', async () => {
-      const repo = createSmartFirestoreRepo<TestEntity>({
+      const repo = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1592,14 +1592,14 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should throw with invalid cursor (scope breach)', async () => {
-      const unscoped = createSmartFirestoreRepo({
+      const unscoped = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
 
       const id = await unscoped.create(createTestEntity({ tenantId: 'acme' }));
 
-      const scoped = createSmartFirestoreRepo({
+      const scoped = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         scope: { tenantId: 'tenant-A' },
@@ -1611,7 +1611,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should throw with invalid cursor (soft-deleted)', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true },
@@ -1626,7 +1626,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should work with large page sizes', async () => {
-      const repo = createSmartFirestoreRepo<TestEntity>({
+      const repo = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1643,7 +1643,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should work with limit 0', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1660,7 +1660,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should work with negative limit', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1677,7 +1677,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should work with specifications', async () => {
-      const repo = createSmartFirestoreRepo<TestEntity>({
+      const repo = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -1715,7 +1715,7 @@ describe('createSmartFirestoreRepo', function () {
 
     describe('cursor pagination with custom orderBy', () => {
       it('should paginate correctly with single field ascending order', async () => {
-        const repo = createSmartFirestoreRepo({
+        const repo = createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: { generateId: ascendingIds(), mirrorId: true },
@@ -1748,7 +1748,7 @@ describe('createSmartFirestoreRepo', function () {
       });
 
       it('should paginate correctly with single field descending order', async () => {
-        const repo = createSmartFirestoreRepo({
+        const repo = createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: { generateId: ascendingIds(), mirrorId: true },
@@ -1776,7 +1776,7 @@ describe('createSmartFirestoreRepo', function () {
       });
 
       it('should paginate correctly with multi-field ordering (mixed directions)', async () => {
-        const repo = createSmartFirestoreRepo({
+        const repo = createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: { generateId: ascendingIds(), mirrorId: true },
@@ -1814,7 +1814,7 @@ describe('createSmartFirestoreRepo', function () {
       });
 
       it('handles null correctly (asc)', async () => {
-        const repo = createSmartFirestoreRepo({
+        const repo = createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: { generateId: ascendingIds(), mirrorId: true },
@@ -1846,7 +1846,7 @@ describe('createSmartFirestoreRepo', function () {
       });
 
       it('handles null correctly (desc)', async () => {
-        const repo = createSmartFirestoreRepo({
+        const repo = createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: { generateId: ascendingIds(), mirrorId: true },
@@ -1878,7 +1878,7 @@ describe('createSmartFirestoreRepo', function () {
       });
 
       it('skips docs with an undefined orderBy field', async () => {
-        const repo = createSmartFirestoreRepo({
+        const repo = createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: { generateId: ascendingIds(), mirrorId: true },
@@ -1904,7 +1904,7 @@ describe('createSmartFirestoreRepo', function () {
       });
 
       it('should work correctly with filters and custom ordering', async () => {
-        const repo = createSmartFirestoreRepo({
+        const repo = createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: { generateId: ascendingIds(), mirrorId: true },
@@ -1930,7 +1930,7 @@ describe('createSmartFirestoreRepo', function () {
       });
 
       it('should handle documents with same sort field values using ID as tiebreaker', async () => {
-        const repo = createSmartFirestoreRepo({
+        const repo = createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: { generateId: ascendingIds(), mirrorId: true },
@@ -1958,7 +1958,7 @@ describe('createSmartFirestoreRepo', function () {
       });
 
       it('should work with nested field paths in orderBy', async () => {
-        const repo = createSmartFirestoreRepo({
+        const repo = createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: { generateId: ascendingIds(), mirrorId: true },
@@ -1988,7 +1988,7 @@ describe('createSmartFirestoreRepo', function () {
       });
 
       it('should correctly handle id in orderBy and ignore fields after it', async () => {
-        const repo = createSmartFirestoreRepo({
+        const repo = createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: { generateId: ascendingIds(), mirrorId: true },
@@ -2022,7 +2022,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('count', () => {
     it('should count entities matching the filter', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -2045,7 +2045,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should return 0 when no entities match', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -2058,7 +2058,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should support counting by id field', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -2074,7 +2074,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should ignore scope-breaches (no scope filter on reads)', async () => {
       const scopedCollection = scopedTestCollection('tenant-A');
-      const base = createSmartFirestoreRepo({
+      const base = createFirestoreRepo({
         collection: scopedCollection,
         firestore: firestore.firestore,
       });
@@ -2082,7 +2082,7 @@ describe('createSmartFirestoreRepo', function () {
         createTestEntity({ tenantId: 'wrong-tenant', name: 'Scoped' }),
       );
 
-      const scoped = createSmartFirestoreRepo({
+      const scoped = createFirestoreRepo({
         collection: scopedTestCollection('tenant-A'),
         firestore: firestore.firestore,
       });
@@ -2091,7 +2091,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should return 0 on scope-breach by default and throw when configured', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         scope: { tenantId: 'acme' },
@@ -2106,7 +2106,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('findBySpec, countBySpec', () => {
     it('should support findBySpec and countBySpec with basic specifications', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -2143,7 +2143,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should support findBySpec with projections', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -2173,7 +2173,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should support specification composition with combineSpecs', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -2211,7 +2211,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('soft delete', () => {
     it('soft deleted entities stay in the database', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true },
@@ -2226,7 +2226,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('update should not touch soft-deleted entities', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true },
@@ -2243,7 +2243,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should not return soft-deleted entities in reads', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true },
@@ -2276,7 +2276,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should soft delete many', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true },
@@ -2299,7 +2299,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('scoping', () => {
     it('reads do not enforce field scope; writes still validate when scope provided', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -2309,7 +2309,7 @@ describe('createSmartFirestoreRepo', function () {
         createTestEntity({ name: 'B', tenantId: 'not-acme' }),
       ]);
 
-      const scoped = createSmartFirestoreRepo({
+      const scoped = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         scope: { tenantId: 'acme' },
@@ -2325,7 +2325,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('adds scope when creating entities', async () => {
-      const scopedRepo = createSmartFirestoreRepo({
+      const scopedRepo = createFirestoreRepo({
         collection: scopedTestCollection('acme'),
         firestore: firestore.firestore,
         scope: { tenantId: 'acme' },
@@ -2347,7 +2347,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should validate scope property values during create', async () => {
-      const scopedRepo = createSmartFirestoreRepo({
+      const scopedRepo = createFirestoreRepo({
         collection: scopedTestCollection('acme'),
         firestore: firestore.firestore,
         scope: { tenantId: 'acme' },
@@ -2377,11 +2377,11 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should prevent updating scope properties', async () => {
-      const baseRepo = createSmartFirestoreRepo({
+      const baseRepo = createFirestoreRepo({
         collection: scopedTestCollection('acme'),
         firestore: firestore.firestore,
       });
-      const scopedRepo = createSmartFirestoreRepo({
+      const scopedRepo = createFirestoreRepo({
         collection: scopedTestCollection('acme'),
         firestore: firestore.firestore,
         scope: { tenantId: 'acme' },
@@ -2410,7 +2410,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should allow reading scope properties', async () => {
-      const scopedRepo = createSmartFirestoreRepo({
+      const scopedRepo = createFirestoreRepo({
         collection: scopedTestCollection('acme'),
         firestore: firestore.firestore,
         scope: { tenantId: 'acme' },
@@ -2439,7 +2439,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('supports multi-property scope on writes (validation and readonly)', async () => {
-      const scopedRepo = createSmartFirestoreRepo({
+      const scopedRepo = createFirestoreRepo({
         collection: scopedTestCollection('acme'),
         firestore: firestore.firestore,
         scope: { tenantId: 'acme', age: 30 },
@@ -2467,12 +2467,12 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('treats empty scope as no scope', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
 
-      const emptyScopedRepo = createSmartFirestoreRepo({
+      const emptyScopedRepo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         scope: {},
@@ -2506,7 +2506,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('identity', () => {
     it('uses server-generated ids by default and does not mirror by default', async () => {
-      const repo = createSmartFirestoreRepo<TestEntity>({
+      const repo = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -2526,7 +2526,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('mirrors id into document when mirrorId=true', async () => {
-      const repo = createSmartFirestoreRepo<TestEntity>({
+      const repo = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { mirrorId: true },
@@ -2538,7 +2538,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('supports custom generateId function', async () => {
-      const repo = createSmartFirestoreRepo<TestEntity>({
+      const repo = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { generateId: () => 'custom-abc' },
@@ -2552,7 +2552,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('supports custom idKey without mirroring', async () => {
       type EntityWithAlias = TestEntity & { entityId: string };
-      const repo = createSmartFirestoreRepo<EntityWithAlias>({
+      const repo = createFirestoreRepo<EntityWithAlias>({
         collection: firestore.firestore.collection(
           COLLECTION_NAME,
         ) as CollectionReference<EntityWithAlias>,
@@ -2577,7 +2577,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('treats idKey as readonly on update', async () => {
-      const repo = createSmartFirestoreRepo<TestEntity>({
+      const repo = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -2590,7 +2590,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('trace timestamps', () => {
     it('should set timestamps when traceTimestamps enabled (app time)', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true, traceTimestamps: true },
@@ -2630,7 +2630,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should set timestamps using Firestore server time', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true, traceTimestamps: 'server' },
@@ -2663,7 +2663,7 @@ describe('createSmartFirestoreRepo', function () {
     it('should use custom clock function', async () => {
       let t = new Date('2020-01-01T00:00:00Z');
       const clock = () => new Date(t);
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true, traceTimestamps: clock },
@@ -2698,7 +2698,7 @@ describe('createSmartFirestoreRepo', function () {
     };
 
     it('should expose timestamp fields in reads when configured as entity properties', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: firestore.firestore.collection(
           COLLECTION_NAME,
         ) as CollectionReference<EntityWithTimestamps>,
@@ -2728,7 +2728,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should support projections including timestamp fields', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: firestore.firestore.collection(
           COLLECTION_NAME,
         ) as CollectionReference<EntityWithTimestamps>,
@@ -2763,7 +2763,7 @@ describe('createSmartFirestoreRepo', function () {
       let testTime = new Date('2023-01-01T00:00:00Z');
       const clock = () => testTime;
 
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: firestore.firestore.collection(
           COLLECTION_NAME,
         ) as CollectionReference<EntityWithTimestamps>,
@@ -2796,7 +2796,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should prevent writing to configured timestamp fields', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: firestore.firestore.collection(
           COLLECTION_NAME,
         ) as CollectionReference<EntityWithTimestamps>,
@@ -2822,7 +2822,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should support partial timestamp configuration', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: firestore.firestore.collection(
           COLLECTION_NAME,
         ) as CollectionReference<EntityWithTimestamps>,
@@ -2854,7 +2854,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should automatically enable timestamps when timestampKeys are configured', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: firestore.firestore.collection(
           COLLECTION_NAME,
         ) as CollectionReference<EntityWithTimestamps>,
@@ -2884,7 +2884,7 @@ describe('createSmartFirestoreRepo', function () {
       let counter = 0;
       const customGenerateId = () => `fs-custom-${++counter}`;
 
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: {
@@ -2905,7 +2905,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should default to server-generated ids', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -2921,7 +2921,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('version counter', () => {
     it('should increment version with hidden field when version: true', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { version: true },
@@ -2948,7 +2948,7 @@ describe('createSmartFirestoreRepo', function () {
         version: number;
       };
 
-      const repo = createSmartFirestoreRepo<VersionedEntity>({
+      const repo = createFirestoreRepo<VersionedEntity>({
         collection: firestore.firestore.collection(
           COLLECTION_NAME,
         ) as CollectionReference<VersionedEntity>,
@@ -2970,7 +2970,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should increment version on soft delete', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { version: true, softDelete: true },
@@ -2992,7 +2992,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should work with bulk operations', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { version: true },
@@ -3018,7 +3018,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should not interfere when version is disabled', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -3042,7 +3042,7 @@ describe('createSmartFirestoreRepo', function () {
     it('buildUpdateOperation sets timestamps', async () => {
       let t = new Date('2025-01-01T00:00:00.000Z');
       const clock = () => t;
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { traceTimestamps: clock },
@@ -3082,7 +3082,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('buildUpdateOperation prevents writing read-only props (runtime)', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { version: true, softDelete: true, traceTimestamps: true },
@@ -3097,7 +3097,7 @@ describe('createSmartFirestoreRepo', function () {
       ).toThrow('Cannot unset readonly properties: _deleted');
 
       // scope properties become readonly on update when scope configured
-      const scoped = createSmartFirestoreRepo({
+      const scoped = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         scope: { tenantId: 'acme' },
@@ -3111,7 +3111,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('applyConstraints excludes soft-deleted documents', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true },
@@ -3133,7 +3133,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('applyConstraints does not add scope filters (reads ignore scope)', async () => {
-      const base = createSmartFirestoreRepo({
+      const base = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         options: { softDelete: true },
@@ -3145,7 +3145,7 @@ describe('createSmartFirestoreRepo', function () {
         createTestEntity({ name: 'B', tenantId: 'not-acme' }),
       ]);
 
-      const scoped = createSmartFirestoreRepo({
+      const scoped = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         scope: { tenantId: 'acme' },
@@ -3163,7 +3163,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('transactions', () => {
     it('withTransaction should apply all operations within the same transaction', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -3197,7 +3197,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('runTransaction should execute all operations within a transaction', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -3226,7 +3226,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should rollback all changes when withTransaction transaction fails', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -3271,7 +3271,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should rollback all changes when runTransaction fails', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -3311,13 +3311,13 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should work with scoped repositories in transactions', async () => {
-      const baseRepo = createSmartFirestoreRepo({
+      const baseRepo = createFirestoreRepo({
         collection: firestore.firestore.collection(
           COLLECTION_NAME,
         ) as CollectionReference<TestEntity>,
         firestore: firestore.firestore,
       });
-      const scopedRepo = createSmartFirestoreRepo({
+      const scopedRepo = createFirestoreRepo({
         collection: firestore.firestore.collection(
           COLLECTION_NAME,
         ) as CollectionReference<TestEntity>,
@@ -3346,7 +3346,7 @@ describe('createSmartFirestoreRepo', function () {
   describe('configuration validation', () => {
     it('should throw error when timestamp keys are duplicated', () => {
       expect(() => {
-        createSmartFirestoreRepo({
+        createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: {
@@ -3366,7 +3366,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should throw error when version key conflicts with timestamp key', () => {
       expect(() => {
-        createSmartFirestoreRepo({
+        createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: {
@@ -3387,7 +3387,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should throw error when soft delete key conflicts with other keys', () => {
       expect(() => {
-        createSmartFirestoreRepo({
+        createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: {
@@ -3408,7 +3408,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should not throw error when all keys are unique', () => {
       expect(() => {
-        createSmartFirestoreRepo({
+        createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: {
@@ -3431,7 +3431,7 @@ describe('createSmartFirestoreRepo', function () {
         _v: number;
       };
       expect(() =>
-        createSmartFirestoreRepo<EntityWithReadonlyFields>({
+        createFirestoreRepo<EntityWithReadonlyFields>({
           collection: firestore.firestore.collection(
             COLLECTION_NAME,
           ) as CollectionReference<EntityWithReadonlyFields>,
@@ -3455,7 +3455,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should throw when bounded trace strategy is configured (not supported in Firestore)', () => {
       expect(() => {
-        createSmartFirestoreRepo({
+        createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: {
@@ -3471,12 +3471,12 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should allow latest and unbounded trace strategies', () => {
       expect(() => {
-        createSmartFirestoreRepo({
+        createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: { traceStrategy: 'latest' } as any,
         });
-        createSmartFirestoreRepo({
+        createFirestoreRepo({
           collection: testCollection(),
           firestore: firestore.firestore,
           options: { traceStrategy: 'unbounded' } as any,
@@ -3487,7 +3487,7 @@ describe('createSmartFirestoreRepo', function () {
 
   describe('tracing', () => {
     it('should not apply trace when traceContext is not provided', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -3499,7 +3499,7 @@ describe('createSmartFirestoreRepo', function () {
     });
 
     it('should apply per-operation mergeTrace even without base traceContext', async () => {
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
       });
@@ -3523,7 +3523,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should apply trace with latest strategy by default', async () => {
       const traceContext = { userId: 'user123', requestId: 'req456' };
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         traceContext,
@@ -3543,7 +3543,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should use custom traceKey when specified', async () => {
       const traceContext = { userId: 'user123' };
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         traceContext,
@@ -3563,7 +3563,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should merge trace context in operations', async () => {
       const traceContext = { userId: 'user123', requestId: 'req456' };
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         traceContext,
@@ -3602,7 +3602,7 @@ describe('createSmartFirestoreRepo', function () {
 
     it('should use unbounded strategy when configured', async () => {
       const traceContext = { userId: 'user123' };
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         traceContext,
@@ -3626,7 +3626,7 @@ describe('createSmartFirestoreRepo', function () {
     it('should respect custom trace timestamp provider', async () => {
       let t = new Date('2024-03-01T00:00:00.000Z');
       const clock = () => t;
-      const repo = createSmartFirestoreRepo({
+      const repo = createFirestoreRepo({
         collection: testCollection(),
         firestore: firestore.firestore,
         traceContext: { userId: 'clock' },

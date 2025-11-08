@@ -3,7 +3,7 @@ import {
   ManagedFields,
   Projected,
   Projection,
-  RepositoryConfig,
+  RepoConfig,
 } from './repo-config';
 import { OptionalPropPath, Prettify, PrimitivePropPath } from './types';
 
@@ -40,7 +40,7 @@ export type PageResult<T> = {
 export type Repo<
   T extends { id: string },
   Scope extends Partial<T> = {},
-  Config extends RepositoryConfig<T> = {},
+  Config extends RepoConfig<T> = {},
   Managed extends ManagedFields<T, Config, Scope> = ManagedFields<
     T,
     Config,

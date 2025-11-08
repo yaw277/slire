@@ -23,7 +23,7 @@ export type TimestampConfig<T> = {
   deletedAt?: DateKeys<T>;
 };
 
-export type RepositoryConfig<T> = {
+export type RepoConfig<T> = {
   // Identity configuration
   generateId?: 'server' | (() => string);
   idKey?: StringKeys<T>; // default 'id'
@@ -44,7 +44,7 @@ export type RepositoryConfig<T> = {
 // Repo-managed fields part of T (based on repo config and scope).
 export type ManagedFields<
   T,
-  Config extends RepositoryConfig<T>,
+  Config extends RepoConfig<T>,
   Scope extends Partial<T>,
 > =
   | 'id'
@@ -89,7 +89,7 @@ export type WriteOp = 'create' | 'update' | 'delete';
 
 // Factory function that creates database-agnostic helper functions
 export function repoConfig<T extends { id: string }>(
-  config: RepositoryConfig<T>,
+  config: RepoConfig<T>,
   traceContext?: any,
   scope?: Partial<T>,
 ) {

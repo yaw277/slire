@@ -17,7 +17,7 @@ import {
   Projected,
   Projection,
   repoConfig,
-  RepositoryConfig,
+  RepoConfig,
   WriteOp,
 } from './repo-config';
 import { Prettify } from './types';
@@ -34,7 +34,7 @@ const MONGODB_IN_OPERATOR_MAX_CLAUSES = 100;
 export type MongoRepo<
   T extends { id: string },
   Scope extends Partial<T> = {},
-  Config extends RepositoryConfig<T> = {},
+  Config extends RepoConfig<T> = {},
   Managed extends ManagedFields<T, Config, Scope> = ManagedFields<
     T,
     Config,
@@ -87,10 +87,10 @@ export type MongoRepo<
  *
  */
 
-export function createSmartMongoRepo<
+export function createMongoRepo<
   T extends { id: string },
   Scope extends Partial<T> = {},
-  Config extends RepositoryConfig<T> = {},
+  Config extends RepoConfig<T> = {},
   Managed extends ManagedFields<T, Config, Scope> = ManagedFields<
     T,
     Config,
@@ -836,7 +836,7 @@ export function createSmartMongoRepo<
 
     // Factory method for session-aware repository
     withSession: (clientSession: ClientSession) => {
-      return createSmartMongoRepo({
+      return createMongoRepo({
         collection,
         mongoClient,
         scope,
