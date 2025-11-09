@@ -186,54 +186,27 @@ await mongoClient.withSession(async (session) => {
 
 This approach obviously also allows you to have transactions that span multiple repositories - just create session-aware instances from different MongoDB repositories using the same session and all their operations will participate in the same transaction.
 
-Finally, for the end of this quick tour, let's look at how Slire steps aside
-when we have to deal with more advanced operations that we cannot reasonably represent in
-a DB-agnostic interface. For demonstration purposes let's imagine a fictional "client-side stored procedure"
-that determines the top expenses per category given an organization and currency:
+Finally, Slire intentionally steps aside for advanced operations that aren’t a good fit for a DB‑agnostic API. In those cases, use the native driver directly while reusing repository helpers to keep scope, timestamps, versioning, and tracing consistent.
 
 ```typescript
-export async function markTopExpenses({
+export async function archiveOverdueInProgressTasks({
   mongoClient,
-  organizationId,
-  currency,
+  tenantId,
 }: {
   mongoClient: MongoClient;
-  organizationId: string;
-  currency: string;
+  tenantId: string;
 }): Promise<void> {
-  const TOP_MARKER = 'customInformation.top';
-  const repo = createExpenseRepo(mongoClient, organizationId);
+  const repo = createTaskRepo(mongoClient, tenantId);
+  const now = new Date();
 
   await mongoClient.withSession(async (session) => {
     await session.withTransaction(async () => {
-      // remove marker from all current top expenses
+      // Use native MongoDB update with Slire helpers:
+      // - applyConstraints: merges scope and soft-delete filtering
+      // - buildUpdateOperation: applies timestamps/versioning/tracing consistently
       await repo.collection.updateMany(
-        // -> a repo instance exposes the underlying collection
-        repo.applyConstraints({ currency, [TOP_MARKER]: true }), // -> applyConstraints ensures org scope
-        repo.buildUpdateOperation({ unset: { [TOP_MARKER]: 1 } }), // -> applies timestamps etc. if configured
-        { session }
-      );
-
-      // determine new top expenses
-      const topExpenses = await repo.collection
-        .aggregate<{ expenseId: string }>(
-          [
-            { $match: repo.applyConstraints({ currency }) }, // -> applyConstraints ensures org scope and excludes soft-deleted
-            { $sort: { category: 1, totalClaim: -1 } },
-            { $group: { _id: '$categoryId', expenseId: { $first: '$_id' } } },
-          ],
-          { session }
-        )
-        .toArray();
-
-      // set the marker for the new top expenses
-      await repo.collection.bulkWrite(
-        topExpenses.map((e) => ({
-          updateOne: {
-            filter: repo.applyConstraints({ _id: e.expenseId }), // -> again, ensure org scope
-            update: repo.buildUpdateOperation({ set: { [TOP_MARKER]: true } }), // -> applies timestamps etc. if configured
-          },
-        })),
+        repo.applyConstraints({ status: 'in_progress', dueDate: { $lt: now } }),
+        repo.buildUpdateOperation({ set: { status: 'archived' } }),
         { session }
       );
     });
@@ -241,21 +214,7 @@ export async function markTopExpenses({
 }
 ```
 
-Noteworthy here is that for this kind of custom data access, DB and collection names stay hidden as well as how a scope
-translates to a filter for reads and writes.
-
-Due to their DB-specific nature, the repository functions supporting native operations are not part of the DB-agnostic Slire
-interface. A future Firestore implementation may provide such helpers in a different fashion.
-Hiding scope filters may seem trivial and not worth the effort of encapsulating them in the repository instance. The value
-of this encapsulation will hopefully become more apparent when we look at [consistency features](#options) that no one really likes to reimplement
-again and again.
-
-You may have noticed that Slire's CRUD operations borrow a lot from MongoDB's client API (for example,
-updates with set/unset, variants with bulk support, filter syntax).
-This is no coincidence as the MongoDB API is considered very clean in that regard, and should also work well with other DB implementations.
-
-!! consider moving somewhere else
-Finally, if you've been using `DocumentService` for most of your data access, you might wonder what a migration path to Slire would look like. You're probably thinking it's quite an effort since you've injected `DocumentService` instances all over the place and the interfaces aren't compatible. That's correct, and the "Recommended Usage Patterns" section explains why we think that injecting repository instances everywhere isn't a good idea in the first place.
+This keeps database and collection details encapsulated by your factory while letting you use the full power of the native driver. You still benefit from consistent scope enforcement and managed fields without rewriting that logic.
 
 ## API Overview
 
