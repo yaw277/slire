@@ -1,180 +1,39 @@
 # Slire
 
-- [Install](#install)
-- [Quickstart](#quickstart)
-  - [MongoDB (Quickstart)](#mongodb-quickstart)
-  - [Firestore (Quickstart)](#firestore-quickstart)
-- [Core Concepts](#core-concepts)
-- [API Overview](#api-overview)
-- [Configuration](#configuration)
-- [Database Differences](#database-differences)
-  - [MongoDB](#mongodb)
-  - [Firestore](#firestore)
-- [Transactions](#transactions)
-- [Pagination](#pagination)
-- [Tracing and Audit Overview](#tracing-and-audit-overview)
-- [Recommended Usage Patterns](#recommended-usage-patterns)
-- [Limitations and Caveats](#limitations-and-caveats)
-- [FAQ](#faq)
-- [Roadmap](#roadmap)
-- [License](#license)
+- [What the Heck is Slire?](#what-the-heck-is-slire)
+- [A Quick Glimpse](#a-quick-glimpse)
 - [Why Slire?](#why-slire)
+  - [The Problem with Traditional ORMs](#the-problem-with-traditional-orms)
+  - [Slire's Philosophy and Approach](#slires-philosophy-and-approach)
+- [API Reference Core CRUD Operations (Slire interface)](#api-reference-core-crud-operations-slire-interface)
+  - [getById](#getbyid) - [getByIds](#getbyids)
+  - [create](#create) - [createMany](#createmany)
+  - [update](#update) - [updateMany](#updatemany)
+  - [delete](#delete) - [deleteMany](#deletemany)
+  - [find](#find) - [findBySpec](#findbyspec)
+  - [findPage](#findpage) - [findPageBySpec](#findpagebyspec)
+  - [count](#count) - [countBySpec](#countbyspec)
+- [MongoDB Implementation](#mongodb-implementation)
+  - [createMongoRepo](#createmongorepo)
+  - [withSession](#withsession)
+  - [runTransaction](#runtransaction)
+  - [collection](#collection)
+  - [applyConstraints](#applyconstraints)
+  - [buildUpdateOperation](#buildupdateoperation)
+  - [When you need upsert](#when-you-need-upsert)
+- [Firestore Implementation](#firestore-implementation)
+  - [Design assumptions](#design-assumptions)
+  - [Repository instantiation (scoped collection)](#repository-instantiation-scoped-collection)
+  - [Operation semantics](#operation-semantics)
+  - [Indexing notes](#indexing-notes)
+  - [Differences vs. MongoDB](#differences-vs-mongodb)
+- [Recommended Usage Patterns](#recommended-usage-patterns)
+  - [Repository Factories](#repository-factories)
+  - [Export Repository Types](#export-repository-types)
+  - [Always Use Helper Methods for Direct Collection Operations](#always-use-helper-methods-for-direct-collection-operations)
+  - [Audit Trail Strategies with Tracing](#audit-trail-strategies-with-tracing)
 
 ---
-
-## Install
-
-```bash
-npm install slire
-# or
-pnpm add slire
-# or
-yarn add slire
-```
-
-## Quickstart
-
-### MongoDB (Quickstart)
-
-```typescript
-import { MongoClient } from 'mongodb';
-import { createMongoRepo } from 'slire';
-
-type Expense = { id: string; organizationId: string; total: number; _createdAt?: Date };
-
-const client = new MongoClient(process.env.MONGO_URI!);
-const expenses = client.db('app').collection<Expense>('expenses');
-
-const repo = createMongoRepo<Expense>({
-  collection: expenses,
-  mongoClient: client,
-  scope: { organizationId: 'acme-123' },
-  options: { softDelete: true, traceTimestamps: true, version: true },
-});
-
-const id = await repo.create({ total: 10 });
-await repo.update(id, { set: { total: 42 }, unset: [] });
-const found = await repo.getById(id);
-await repo.delete(id);
-```
-
-### Firestore (Quickstart)
-
-```typescript
-import { Firestore } from '@google-cloud/firestore';
-import { createFirestoreRepo } from 'slire';
-
-type User = { id: string; organizationId: string; name: string; _createdAt?: Date };
-
-const db = new Firestore();
-const collection = db.collection('organizations/acme-123/users') as any;
-
-const repo = createFirestoreRepo<User>({
-  collection,
-  firestore: db,
-  scope: { organizationId: 'acme-123' }, // validated on writes only
-  options: { softDelete: true, traceTimestamps: 'server', version: true },
-});
-
-const id = await repo.create({ name: 'Jane' });
-const [users] = await repo.getByIds([id], { id: true, name: true });
-await repo.deleteMany([id]);
-```
-
-## Core Concepts
-
-- **Scope**: Object merged into all operations for automatic multi-tenancy (e.g., `{ organizationId }`). Reads and writes are constrained; Firestore reads are path-scoped (scope validated on writes).
-- **Managed fields**: `id`, timestamps, version, trace, and scope fields are readonly for updates; allowed on create for convenience (system fields ignored; scope validated).
-- **UpdateOperation**: `{ set?: Partial<T>; unset?: OptionalPropPath | OptionalPropPath[] }` with support for dot paths and overlap validation.
-- **Projections**: `{ propA: true, propB: true }` narrows types on reads.
-- **QueryStream**: Single-use async iterable with `.toArray()`, `.skip()`, `.take()`, `.paged()`.
-
-## API Overview
-
-- **CRUD**: `getById`, `getByIds`, `create`, `createMany`, `update`, `updateMany`, `delete`, `deleteMany`
-- **Query**: `find`, `findBySpec`, `findPage`, `findPageBySpec`, `count`, `countBySpec`
-- **Transactions**:
-  - MongoDB: `withSession(session)`, `runTransaction(cb)`
-  - Firestore: `withTransaction(tx)`, `runTransaction(cb)`
-- **Helpers** (advanced/native use):
-  - `collection` (native handle)
-  - `applyConstraints(...)` (adds scope, soft-delete filtering)
-  - `buildUpdateOperation(update, mergeTrace?)` (applies timestamps/version/trace; protects readonly fields)
-
-For in-depth details, see the sections below (MongoDB/Firestore implementations and the full API reference).
-
-## Configuration
-
-Key options (shared unless noted):
-
-- **Identity**
-  - `generateId?: 'server' | (() => string)` — default `'server'` (Mongo ObjectId / Firestore doc id)
-  - `idKey?: keyof T` — default `'id'`
-  - `mirrorId?: boolean` — persist public id in documents (off by default)
-- **Consistency**
-  - `softDelete?: boolean` — enable soft delete
-  - `traceTimestamps?: true | 'server' | (() => Date)` — timestamp source
-  - `timestampKeys?: { createdAt?; updatedAt?; deletedAt? }` — custom keys imply timestamping
-  - `version?: true | keyof T` — versioning field (default `_version`)
-- **Tracing**
-  - `traceKey?: keyof T` — default `_trace`
-  - `traceStrategy?: 'latest' | 'bounded' | 'unbounded'`
-    - Firestore: `'bounded'` not supported (throws)
-  - `traceLimit?: number` — required for `'bounded'`
-
-## Database Differences
-
-### MongoDB
-
-- **Soft delete**: filters on “marker does not exist”; deletes set the marker.
-- **Pagination**: cursor is `_id` (ObjectId string) and `_id` is always a tiebreaker; compound sorts supported with a cursor filter.
-- **Updates**: query-based (`updateMany`); large inputs chunked to respect driver limits.
-- **Tracing**: all strategies supported; server timestamps via `$currentDate` when configured.
-
-### Firestore
-
-- **Soft delete**: documents created with `_deleted: false`, reads filter `_deleted == false`.
-- **Pagination**: cursor is document id; sort requires `__name__` tiebreaker.
-- **Updates**: batched writes; multi-document updates chunked (`IN` limits).
-- **Tracing**: supports `'latest'` and `'unbounded'` (throws on `'bounded'`).
-- **Transactions**: reads must occur before writes; repository methods that read inside must be called in the read phase.
-
-## Transactions
-
-MongoDB
-
-```typescript
-await repo.runTransaction(async (tx) => {
-  const items = await tx.find({ status: 'active' }, { id: true }).toArray();
-  await tx.updateMany(items.map(i => i.id), { set: { processed: true } });
-});
-```
-
-Firestore
-
-```typescript
-await repo.runTransaction(async (tx) => {
-  const page = await tx.findPage({ status: 'active' }, { limit: 20 });
-  await tx.updateMany(page.items.map(i => i.id), { set: { processed: true } });
-});
-```
-
-## Pagination
-
-- Use `findPage` for cursor-based pagination (stable regardless of depth).
-- MongoDB: ensure compound indexes when using custom `orderBy` (append `_id`).
-- Firestore: always includes `__name__` tiebreaker; cursor must reference an existing doc.
-
-## Tracing and Audit Overview
-
-- Per-repo `traceContext` and per-operation `{ mergeTrace }` are merged; `_op` and `_at` added automatically.
-- Strategies:
-  - `'latest'` — single object
-  - `'bounded'` — array with max size (MongoDB only)
-  - `'unbounded'` — append-only array (MongoDB and Firestore)
-- Patterns:
-  - Change streams (MongoDB) for asynchronous audit pipelines
-  - Embedded audit trails for immediate, self-contained history
 
 ## What the Heck is Slire?
 
