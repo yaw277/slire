@@ -1,5 +1,6 @@
 # Slire
 
+- [Overview](#overview)
 - [Install](#install)
 - [Quickstart](#quickstart)
   - [MongoDB (Quickstart)](#mongodb-quickstart)
@@ -21,6 +22,19 @@
 - [Why Slire?](#why-slire)
 
 ---
+
+## Overview
+
+Slire is a minimal, database‑agnostic repository layer that adds the consistency features most teams rewrite over and over — scope, timestamps, versioning, soft delete, and tracing — while keeping native MongoDB/Firestore drivers front and center. Use Slire when you want less boilerplate and safer CRUD, and keep using native drivers for anything advanced.
+
+- Minimal abstraction over native drivers (no query builders)
+- Managed fields applied automatically and consistently
+- Type‑safe CRUD, projections, and streaming queries
+- Helpers for native ops: `applyConstraints`, `buildUpdateOperation`
+- Transactions support for MongoDB and Firestore
+- Cursor‑based pagination with stable ordering
+
+Want the full rationale? See [Why Slire?](#why-slire).
 
 ## Install
 
@@ -182,7 +196,7 @@ Slire is a lightweight, database-agnostic interface that provides common CRUD op
 
 **Consistency features** are patterns that most applications need but typically implement inconsistently: automatic timestamps (createdAt, updatedAt), versioning for optimistic locking, soft-delete functionality, and audit trails. Rather than manually adding these to every operation, Slire applies them automatically while still allowing native database access for complex queries and operations.
 
-Slire emerged from experience with DocumentService (Yokoy's internal ODM for Firestore and later MongoDB) and then moving to pure native database access. Both approaches have their pros and cons: ODMs provide convenience but limit functionality, while native access offers full power but requires repetitive boilerplate. Slire occupies a middle ground: more convenience than pure native drivers, but significantly less abstraction than traditional ORMs. It's designed for teams who understand their database technology and want to use it effectively without losing access to advanced features.
+Slire emerged from practical production needs moving between ODM‑style convenience and pure native database access across Firestore and MongoDB. Both approaches have pros and cons: ODMs provide convenience but limit functionality, while native access offers full power but requires repetitive boilerplate. Slire occupies a middle ground: more convenience than pure native drivers, but significantly less abstraction than traditional ORMs. It's designed for teams who understand their database technology and want to use it effectively without losing access to advanced features.
 
 For a deeper understanding of the problems this approach solves, see the [Why Slire?](#why-slire) section.
 
@@ -223,7 +237,7 @@ await repo.delete(id);
 await repo.getById(id); // undefined
 ```
 
-The full list is documented in the [API Reference](#api-reference-core-crud-operations-smartrepo-interface) section.
+The full list is documented in the [API Reference](#api-reference-core-crud-operations-slire-interface) section.
 
 Here's how [transactions](#runtransaction) work:
 
