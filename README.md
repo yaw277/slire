@@ -1,11 +1,11 @@
-# SmartRepo
+# Slire
 
-- [What the Heck is SmartRepo?](#what-the-heck-is-smartrepo)
+- [What the Heck is Slire?](#what-the-heck-is-slire)
 - [A Quick Glimpse](#a-quick-glimpse)
-- [Why SmartRepo?](#why-smartrepo)
+- [Why Slire?](#why-slire)
   - [The Problem with Traditional ORMs](#the-problem-with-traditional-orms)
-  - [SmartRepo's Philosophy and Approach](#smartrepos-philosophy-and-approach)
-- [API Reference Core CRUD Operations (SmartRepo interface)](#api-reference-core-crud-operations-smartrepo-interface)
+  - [Slire's Philosophy and Approach](#slires-philosophy-and-approach)
+- [API Reference Core CRUD Operations (Slire interface)](#api-reference-core-crud-operations-slire-interface)
   - [getById](#getbyid) - [getByIds](#getbyids)
   - [create](#create) - [createMany](#createmany)
   - [update](#update) - [updateMany](#updatemany)
@@ -14,7 +14,7 @@
   - [findPage](#findpage) - [findPageBySpec](#findpagebyspec)
   - [count](#count) - [countBySpec](#countbyspec)
 - [MongoDB Implementation](#mongodb-implementation)
-  - [createSmartMongoRepo](#createsmartmongorepo)
+  - [createMongoRepo](#createmongorepo)
   - [withSession](#withsession)
   - [runTransaction](#runtransaction)
   - [collection](#collection)
@@ -35,24 +35,24 @@
 
 ---
 
-## What the Heck is SmartRepo?
+## What the Heck is Slire?
 
-SmartRepo is a lightweight, database-agnostic interface that provides common CRUD operations with built-in consistency features, designed to work seamlessly alongside native database access. It currently supports MongoDB and Firestore implementations.
+Slire is a lightweight, database-agnostic interface that provides common CRUD operations with built-in consistency features, designed to work seamlessly alongside native database access. It currently supports MongoDB and Firestore implementations.
 
-**Consistency features** are patterns that most applications need but typically implement inconsistently: automatic timestamps (createdAt, updatedAt), versioning for optimistic locking, soft-delete functionality, and audit trails. Rather than manually adding these to every operation, SmartRepo applies them automatically while still allowing native database access for complex queries and operations.
+**Consistency features** are patterns that most applications need but typically implement inconsistently: automatic timestamps (createdAt, updatedAt), versioning for optimistic locking, soft-delete functionality, and audit trails. Rather than manually adding these to every operation, Slire applies them automatically while still allowing native database access for complex queries and operations.
 
-SmartRepo emerged from experience with DocumentService (Yokoy's internal ODM for Firestore and later MongoDB) and then moving to pure native database access. Both approaches have their pros and cons: ODMs provide convenience but limit functionality, while native access offers full power but requires repetitive boilerplate. SmartRepo occupies a middle ground: more convenience than pure native drivers, but significantly less abstraction than traditional ORMs. It's designed for teams who understand their database technology and want to use it effectively without losing access to advanced features.
+Slire emerged from experience with DocumentService (Yokoy's internal ODM for Firestore and later MongoDB) and then moving to pure native database access. Both approaches have their pros and cons: ODMs provide convenience but limit functionality, while native access offers full power but requires repetitive boilerplate. Slire occupies a middle ground: more convenience than pure native drivers, but significantly less abstraction than traditional ORMs. It's designed for teams who understand their database technology and want to use it effectively without losing access to advanced features.
 
-For a deeper understanding of the problems this approach solves, see the [Why SmartRepo?](#why-smartrepo) section.
+For a deeper understanding of the problems this approach solves, see the [Why Slire?](#why-slire) section.
 
 ## A Quick Glimpse
 
-SmartRepo implements the repository pattern: a collection-like interface for accessing and manipulating domain objects. Each repository is bound to a specific database collection and organizational scope, providing type-safe CRUD operations that reduce boilerplate while working seamlessly alongside native database access for complex operations.
+Slire implements the repository pattern: a collection-like interface for accessing and manipulating domain objects. Each repository is bound to a specific database collection and organizational scope, providing type-safe CRUD operations that reduce boilerplate while working seamlessly alongside native database access for complex operations.
 
 Creating a repository instance:
 
 ```typescript
-const expenseRepo = createSmartMongoRepo({
+const expenseRepo = createMongoRepo({
   collection: mongoClient.db('expenseDb').collection<Expense>('expenses'),
   mongoClient,
   scope: { organizationId: 'acme-123' }, // applied to all reads and writes
@@ -60,7 +60,7 @@ const expenseRepo = createSmartMongoRepo({
 
 // better to have a factory enforcing constraints and encapsulating db/collection names
 function createExpenseRepo(client: MongoClient, organizationId: string) {
-  return createSmartMongoRepo({
+  return createMongoRepo({
     collection: client.db('expenseDb').collection<Expense>('expenses'),
     mongoClient: client,
     scope: { organizationId },
@@ -68,7 +68,7 @@ function createExpenseRepo(client: MongoClient, organizationId: string) {
 }
 ```
 
-A `SmartRepo` instance implements a set of basic, DB-agnostic CRUD operations:
+A Slire repository implements a set of basic, DB-agnostic CRUD operations:
 
 ```typescript
 const repo = createExpenseRepo(mongoClient, 'acme-123');
@@ -122,7 +122,7 @@ await mongoClient.withSession(async (session) => {
 
 This approach obviously also allows you to have transactions that span multiple repositories - just create session-aware instances from different MongoDB repositories using the same session and all their operations will participate in the same transaction.
 
-Finally, for the end of this quick tour, let's look at how `SmartRepo` steps aside
+Finally, for the end of this quick tour, let's look at how Slire steps aside
 when we have to deal with more advanced operations that we cannot reasonably represent in
 a DB-agnostic interface. For demonstration purposes let's imagine a fictional "client-side stored procedure"
 that determines the top expenses per category given an organization and currency:
@@ -180,20 +180,20 @@ export async function markTopExpenses({
 Noteworthy here is that for this kind of custom data access, DB and collection names stay hidden as well as how a scope
 translates to a filter for reads and writes.
 
-Due to their DB-specific nature, the repository functions supporting native operations are not part of the DB-agnostic `SmartRepo`
+Due to their DB-specific nature, the repository functions supporting native operations are not part of the DB-agnostic Slire
 interface. A future Firestore implementation may provide such helpers in a different fashion.
 Hiding scope filters may seem trivial and not worth the effort of encapsulating them in the repository instance. The value
 of this encapsulation will hopefully become more apparent when we look at [consistency features](#options) that no one really likes to reimplement
 again and again.
 
-You may have noticed that SmartRepo's CRUD operations borrow a lot from MongoDB's client API (for example,
+You may have noticed that Slire's CRUD operations borrow a lot from MongoDB's client API (for example,
 updates with set/unset, variants with bulk support, filter syntax).
 This is no coincidence as the MongoDB API is considered very clean in that regard, and should also work well with other DB implementations.
 
 !! consider moving somewhere else
-Finally, if you've been using `DocumentService` for most of your data access, you might wonder what a migration path to `SmartRepo` would look like. You're probably thinking it's quite an effort since you've injected `DocumentService` instances all over the place and the interfaces aren't compatible. That's correct, and the "Recommended Usage Patterns" section explains why we think that injecting repository instances everywhere isn't a good idea in the first place.
+Finally, if you've been using `DocumentService` for most of your data access, you might wonder what a migration path to Slire would look like. You're probably thinking it's quite an effort since you've injected `DocumentService` instances all over the place and the interfaces aren't compatible. That's correct, and the "Recommended Usage Patterns" section explains why we think that injecting repository instances everywhere isn't a good idea in the first place.
 
-## Why SmartRepo?
+## Why Slire?
 
 It's fair to ask: "Why create another database abstraction library when so many already exist?" This question deserves a thoughtful response, especially given the abundance of ORMs (Object-Relational Mappers) and ODMs (Object-Document Mappers - we'll use "ORM" to refer to both throughout this section) in the Node.js ecosystem.
 
@@ -214,30 +214,30 @@ These challenges are well-documented in the development community. Ted Neward fa
 
 This raises a fundamental question: Why add another abstraction layer when native database clients and query languages are already excellent, well-designed APIs? Modern database drivers provide clean interfaces, comprehensive feature coverage, excellent documentation, and active maintenance. For experienced developers who understand their database technology, ORM abstractions often become unnecessary overhead rather than genuine value - another layer to learn, debug, and work around.
 
-### SmartRepo's Philosophy and Approach
+### Slire's Philosophy and Approach
 
-SmartRepo emerged from a fundamentally different perspective: start with native database access, then identify and solve only the repetitive patterns that naturally arise. Rather than hiding database complexity, SmartRepo embraces it while addressing genuine pain points developers face with pure native access.
+Slire emerged from a fundamentally different perspective: start with native database access, then identify and solve only the repetitive patterns that naturally arise. Rather than hiding database complexity, Slire embraces it while addressing genuine pain points developers face with pure native access.
 
 **Core principles:**
 
-- **Native Access First**: Direct database operations are the primary interface, not an "escape hatch." SmartRepo provides helpers that enhance native access rather than replacing it
+- **Native Access First**: Direct database operations are the primary interface, not an "escape hatch." Slire provides helpers that enhance native access rather than replacing it
 - **Minimal, Focused Abstraction**: Only the most common operations (basic CRUD) get convenience methods. Complex operations use native database features with optional consistency helpers
 - **Automatic Multi-tenancy**: Built-in scoping eliminates the repetitive, error-prone task of manually adding tenant filters to every query
-- **Optional Consistency**: Instead of forcing rigid schemas, SmartRepo provides optional consistency guarantees (timestamps, versioning, soft-delete, audit trails) that work with native operations
+- **Optional Consistency**: Instead of forcing rigid schemas, Slire provides optional consistency guarantees (timestamps, versioning, soft-delete, audit trails) that work with native operations
 
-SmartRepo follows the tradition of MicroORMs like [Dapper](https://github.com/DapperLib/Dapper), [Massive](https://github.com/robconery/massive-js/), and [PetaPoco](https://github.com/CollaboratingPlatypus/PetaPoco). These tools emerged as a response to full ORM complexity, providing just enough abstraction to eliminate boilerplate while working seamlessly alongside direct database access. SmartRepo is exactly such a tool for document databases.
+Slire follows the tradition of MicroORMs like [Dapper](https://github.com/DapperLib/Dapper), [Massive](https://github.com/robconery/massive-js/), and [PetaPoco](https://github.com/CollaboratingPlatypus/PetaPoco). These tools emerged as a response to full ORM complexity, providing just enough abstraction to eliminate boilerplate while working seamlessly alongside direct database access. Slire is exactly such a tool for document databases.
 
-**What SmartRepo deliberately avoids:**
+**What Slire deliberately avoids:**
 
-SmartRepo doesn't try to replace your database knowledge with abstractions. Instead of hiding MongoDB's aggregation framework behind query builders, it encourages direct usage while providing consistency helpers. It doesn't attempt database-agnostic complex operations (which either reduce functionality to the lowest common denominator or leak database-specific features anyway). And it doesn't manage schemas or relationships - document databases excel at flexible schemas and embedded data, so SmartRepo works with this paradigm rather than forcing relational patterns.
+Slire doesn't try to replace your database knowledge with abstractions. Instead of hiding MongoDB's aggregation framework behind query builders, it encourages direct usage while providing consistency helpers. It doesn't attempt database-agnostic complex operations (which either reduce functionality to the lowest common denominator or leak database-specific features anyway). And it doesn't manage schemas or relationships - document databases excel at flexible schemas and embedded data, so Slire works with this paradigm rather than forcing relational patterns.
 
 **Bottom-up design from real patterns:**
 
-This approach emerged organically from observing teams repeatedly writing the same basic CRUD operations, inconsistently applying timestamps and audit trails, and struggling with tightly coupled business logic. SmartRepo codifies these proven patterns while working alongside direct database access. The extensive architectural guidance in the second part of this document then shows how to integrate tools like SmartRepo effectively into application architecture and business logic - patterns that evolved from practical necessity, not theoretical design.
+This approach emerged organically from observing teams repeatedly writing the same basic CRUD operations, inconsistently applying timestamps and audit trails, and struggling with tightly coupled business logic. Slire codifies these proven patterns while working alongside direct database access. The extensive architectural guidance in the second part of this document then shows how to integrate tools like Slire effectively into application architecture and business logic - patterns that evolved from practical necessity, not theoretical design.
 
-## API Reference Core CRUD Operations (SmartRepo interface)
+## API Reference Core CRUD Operations (Slire interface)
 
-The operations listed here resemble the full set of DB-agnostic functions in a SmartRepo. At time of writing only the MongoDB implementation existed. So some descriptions might mention some characteristics specific to MongoDB. However, the interface is designed to
+The operations listed here resemble the full set of DB-agnostic functions in Slire. At time of writing only the MongoDB implementation existed. So some descriptions might mention some characteristics specific to MongoDB. However, the interface is designed to
 be as simple as possible to allow being implemented for other DBs, particularly Firestore.
 
 **Note 1**: In the function signatures below, `T` represents the entity type, `UpdateInput` represents the subset of `T` that can be modified via updates (excluding managed fields), and `CreateInput` represents the input shape for creating entities (includes optional managed fields). Managed fields include system fields (id, timestamps, version, soft-delete markers) and scope fields.
@@ -249,7 +249,7 @@ be as simple as possible to allow being implemented for other DBs, particularly 
 
 #### Input Type Distinction
 
-SmartRepo uses distinct input types for different operations to provide compile-time safety:
+Slire uses distinct input types for different operations to provide compile-time safety:
 
 - **`UpdateInput`**: Used for update operations - excludes all managed fields (system fields like timestamps/version/id, plus scope fields). This prevents accidental modification of fields that should be repository-controlled.
 - **`CreateInput`**: Used for create/upsert operations - includes all `UpdateInput` fields plus optional managed fields. The managed fields are allowed purely as a convenience feature so you don't have to manually strip them from objects. System fields (timestamps, version, id) are ignored internally and auto-generated. Scope fields are validated to match the repository's configured scope values - mismatches cause the operation to fail.
@@ -577,13 +577,13 @@ Returns the number of entities that match the provided specification. Like `coun
 
 ## MongoDB Implementation
 
-The MongoDB implementation provides additional functionality beyond the core SmartRepo interface. This includes the factory function for creating repositories, transaction support methods, and helper functions that enable direct MongoDB operations while maintaining the repository's consistency rules and scoping behavior. These MongoDB-specific features are essential for advanced use cases where the generic interface isn't sufficient, but you still want the benefits of automatic scope filtering, timestamps, and other repository features.
+The MongoDB implementation provides additional functionality beyond the core Slire interface. This includes the factory function for creating repositories, transaction support methods, and helper functions that enable direct MongoDB operations while maintaining the repository's consistency rules and scoping behavior. These MongoDB-specific features are essential for advanced use cases where the generic interface isn't sufficient, but you still want the benefits of automatic scope filtering, timestamps, and other repository features.
 
-### createSmartMongoRepo
+### createMongoRepo
 
-`createSmartMongoRepo({ collection, mongoClient, scope?, traceContext?, options? }): MongoRepo<T, Scope, Entity>`
+`createMongoRepo({ collection, mongoClient, scope?, traceContext?, options? }): MongoRepo<T, Scope, Entity>`
 
-Factory function that creates a MongoDB repository instance implementing the SmartRepo interface. Takes a MongoDB collection, client, optional scope for filtering, optional trace context for audit logging, and configuration options for consistency features like timestamps, versioning, soft delete, and tracing. The function uses TypeScript generics to ensure type safety across all repository operations. The returned repository instance provides both the DB-agnostic SmartRepo interface and additional MongoDB-specific helpers (described in the following sections) for advanced operations.
+Factory function that creates a MongoDB repository instance implementing the Slire interface. Takes a MongoDB collection, client, optional scope for filtering, optional trace context for audit logging, and configuration options for consistency features like timestamps, versioning, soft delete, and tracing. The function uses TypeScript generics to ensure type safety across all repository operations. The returned repository instance provides both the DB-agnostic Slire interface and additional MongoDB-specific helpers (described in the following sections) for advanced operations.
 
 #### Scope
 
@@ -598,7 +598,7 @@ Scope fields are treated as managed fields and are automatically controlled by t
 - **Reads/Deletes**: Automatically filtered by scope values
 
 ```typescript
-const repo = createSmartMongoRepo({
+const repo = createMongoRepo({
   collection: userCollection,
   mongoClient,
   scope: { organizationId: 'acme-123', isActive: true },
@@ -637,7 +637,7 @@ The trace context is completely flexible - define whatever fields are meaningful
 
 ```typescript
 // Basic trace context
-const repo = createSmartMongoRepo({
+const repo = createMongoRepo({
   collection: expenseCollection,
   mongoClient,
   traceContext: { userId: 'john-doe', requestId: 'req-abc-123' },
@@ -661,7 +661,7 @@ await repo.update(
 // { userId: 'john-doe', requestId: 'req-abc-123', operation: 'approve-expense', approver: 'jane-doe', _op: 'update', _at: Date }
 
 // Works without base traceContext as well:
-const repoNoBase = createSmartMongoRepo({ collection, mongoClient });
+const repoNoBase = createMongoRepo({ collection, mongoClient });
 await repoNoBase.create(expense, { mergeTrace: { operation: 'import-csv' } });
 // Document includes: { ..., _trace: { operation: 'import-csv', _op: 'create', _at: Date } }
 ```
@@ -708,7 +708,7 @@ The `options` parameter configures consistency features and repository behavior:
 
 ```typescript
 // Latest strategy (default)
-const repo = createSmartMongoRepo({
+const repo = createMongoRepo({
   collection,
   mongoClient,
   traceContext: { userId: 'john' },
@@ -716,7 +716,7 @@ const repo = createSmartMongoRepo({
 });
 
 // Bounded strategy with history
-const auditRepo = createSmartMongoRepo({
+const auditRepo = createMongoRepo({
   collection,
   mongoClient,
   traceContext: { userId: 'john' },
@@ -728,7 +728,7 @@ const auditRepo = createSmartMongoRepo({
 });
 
 // Unbounded strategy with complete history
-const fullHistoryRepo = createSmartMongoRepo({
+const fullHistoryRepo = createMongoRepo({
   collection,
   mongoClient,
   traceContext: { userId: 'john' },
@@ -751,7 +751,7 @@ Calling this method on a repository instance that already has a session will sim
 
 ### runTransaction
 
-`runTransaction<R>(operation: (txRepo: SmartRepo<T, Scope, Entity>) => Promise<R>): Promise<R>`
+`runTransaction<R>(operation: (txRepo: Repo<T, Scope, Entity>) => Promise<R>): Promise<R>`
 
 Convenience method that executes a function within a MongoDB transaction. Creates a new session, starts a transaction, and provides a session-aware repository instance to the operation function. The transaction is automatically committed if the operation succeeds or rolled back if an error is thrown. This is the recommended approach for most transaction scenarios as it handles all the session management automatically. The operation function receives a repository instance that maintains all the same configuration (scope, timestamps, etc.) as the original repository but operates within the transaction context.
 
@@ -761,7 +761,7 @@ This method is best suited for simple scenarios where the provided transaction-a
 
 `collection: Collection<any>`
 
-Direct access to the underlying MongoDB collection instance. This property allows you to perform advanced MongoDB operations that aren't covered by the SmartRepo interface, such as aggregations, complex queries, bulk operations, or any other collection-level methods. When using the collection directly, you can still leverage the repository's helper methods (`applyConstraints`, `buildUpdateOperation`) to maintain consistency with the repository's configured scoping, timestamps, and versioning behavior.
+Direct access to the underlying MongoDB collection instance. This property allows you to perform advanced MongoDB operations that aren't covered by the Slire interface, such as aggregations, complex queries, bulk operations, or any other collection-level methods. When using the collection directly, you can still leverage the repository's helper methods (`applyConstraints`, `buildUpdateOperation`) to maintain consistency with the repository's configured scoping, timestamps, and versioning behavior.
 
 ### applyConstraints
 
@@ -790,7 +790,7 @@ await repo.collection.updateMany(
 
 ### When you need upsert
 
-SmartRepo does not include upsert operations to keep the core API simple and semantics clear. When you need upsert operations, use the MongoDB collection directly with these patterns while reusing repository helpers for consistency:
+Slire does not include upsert operations to keep the core API simple and semantics clear. When you need upsert operations, use the MongoDB collection directly with these patterns while reusing repository helpers for consistency:
 
 - merge-style upsert (preserve unspecified fields):
 
@@ -847,7 +847,7 @@ These assumptions reduce composite index requirements (no scope fields in filter
 
 ```ts
 function createUserRepo(db: Firestore, orgId: string) {
-  return createSmartFirestoreRepo<User>({
+  return createFirestoreRepo<User>({
     collection: db.collection(`organizations/${orgId}/users`) as any,
     firestore: db,
     scope: { organizationId: orgId }, // optional; validated on writes only (not applied to reads)
@@ -907,12 +907,12 @@ Follow the recommendations in this section to maintain consistency and keep the 
 
 ### Repository Factories
 
-Prefer creating dedicated factory functions over direct `createSmartMongoRepo` calls to encapsulate configuration:
+Prefer creating dedicated factory functions over direct `createMongoRepo` calls to encapsulate configuration:
 
 ```typescript
 // ✅ GOOD - encapsulated factory
 export function createExpenseRepo(client: MongoClient, orgId: string) {
-  return createSmartMongoRepo({
+  return createMongoRepo({
     collection: client.db('expenseDb').collection<Expense>('expenses'),
     mongoClient: client,
     scope: { organizationId: orgId },
@@ -928,7 +928,7 @@ export function createExpenseRepo(client: MongoClient, orgId: string) {
 }
 
 // ❌ ACCEPTABLE but less maintainable - direct usage everywhere
-const repo = createSmartMongoRepo({ ... });
+const repo = createMongoRepo({ ... });
 ```
 
 Repository factories are also ideal for enforcing trace context to ensure gapless audit history:
@@ -940,7 +940,7 @@ export function createExpenseRepo(
   orgId: string,
   traceContext: { userId: string; requestId: string; service: string }
 ) {
-  return createSmartMongoRepo({
+  return createMongoRepo({
     collection: client.db('expenseDb').collection<Expense>('expenses'),
     mongoClient: client,
     scope: { organizationId: orgId },
@@ -973,7 +973,7 @@ Alongside your repository factories, always export a corresponding type that cap
 
 // ✅ GOOD - export both factory and type
 export function createExpenseRepo(client: MongoClient, orgId: string) {
-  return createSmartMongoRepo({ ... });
+  return createMongoRepo({ ... });
 }
 
 export type ExpenseRepo = ReturnType<typeof createExpenseRepo>;
@@ -981,7 +981,7 @@ export type ExpenseRepo = ReturnType<typeof createExpenseRepo>;
 // business-logic.ts
 
 // ❌ BAD - manual generic parameters, can get out of sync & tight coupling
-function processExpenses(deps: { repo: SmartRepo<Expense, any, any> }, params: { ... }) {
+function processExpenses(deps: { repo: Repo<Expense, any, any> }, params: { ... }) {
   // ...
 }
 
@@ -1000,7 +1000,7 @@ Reasons to derive repository types from factory functions:
 
 - Captures the precise generic parameters from your factory configuration
 - Type automatically updates when you modify the factory function
-- Avoid manually reconstructing `SmartRepo<Expense, { organizationId: string }, ExpenseEntity>`
+- Avoid manually reconstructing `Repo<Expense, { organizationId: string }, ExpenseEntity>`
 - Single source of thruth: Factory function defines both implementation and type
 
 ### Always Use Helper Methods for Direct Collection Operations
@@ -1023,9 +1023,9 @@ await repo.collection.updateMany(
 
 ### Audit Trail Strategies with Tracing
 
-SmartRepo's built-in tracing functionality is specifically designed for two primary audit strategies: **change stream processing** (using the "latest" trace strategy) and **embedded audit trails** (using either "bounded" or "unbounded" trace strategies). The tracing feature automatically embeds trace context into documents during write operations, making it ideal for these approaches.
+Slire's built-in tracing functionality is specifically designed for two primary audit strategies: **change stream processing** (using the "latest" trace strategy) and **embedded audit trails** (using either "bounded" or "unbounded" trace strategies). The tracing feature automatically embeds trace context into documents during write operations, making it ideal for these approaches.
 
-This section first covers these SmartRepo-native strategies, followed by alternative approaches that implement audit logging without relying on SmartRepo's tracing feature - giving you flexibility to choose based on your specific requirements and infrastructure.
+This section first covers these Slire-native strategies, followed by alternative approaches that implement audit logging without relying on Slire's tracing feature - giving you flexibility to choose based on your specific requirements and infrastructure.
 
 #### Change Stream Processing (Recommended)
 
@@ -1070,11 +1070,11 @@ changeStream.on('change', async (event) => {
 
 #### Embedded Audit Trails
 
-**Approach:** Use SmartRepo's "bounded" or "unbounded" trace strategies to maintain operation history directly within each document.
+**Approach:** Use Slire's "bounded" or "unbounded" trace strategies to maintain operation history directly within each document.
 
 ```typescript
 // Bounded strategy - limited history with size control
-const boundedRepo = createSmartMongoRepo({
+const boundedRepo = createMongoRepo({
   collection,
   mongoClient,
   traceContext: { userId, requestId, service: 'expense-api' },
@@ -1086,7 +1086,7 @@ const boundedRepo = createSmartMongoRepo({
 });
 
 // Unbounded strategy - complete history without limits
-const unboundedRepo = createSmartMongoRepo({
+const unboundedRepo = createMongoRepo({
   collection,
   mongoClient,
   traceContext: { userId, requestId, service: 'expense-api' },
@@ -1157,7 +1157,7 @@ const recentApprovals = await repo.collection
 - Harder to implement complex audit analytics across multiple documents
 - MongoDB 16MB document size limits apply to unbounded strategy
 
-The following strategies implement audit logging without using SmartRepo's built-in tracing feature, offering different trade-offs for specific use cases:
+The following strategies implement audit logging without using Slire's built-in tracing feature, offering different trade-offs for specific use cases:
 
 #### Alternative: Synchronous Audit Collection
 
