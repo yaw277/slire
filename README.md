@@ -44,13 +44,13 @@ yarn add slire
 
 ## Quickstart
 
-Slire implements the repository pattern: a collection-like interface for accessing and manipulating domain objects. Each repository is bound to a specific database collection.
+Slire implements the repository pattern: a collection‑like interface for accessing and manipulating domain objects. Each repository is bound to a specific database collection.
 
 A Slire repository is instantiated with a configuration that defines which fields are managed automatically (id, timestamps, version, trace) and which scope to apply. Scope is a fixed filter that enforces tenancy/data partitioning across all operations.
 
 For MongoDB, scope is merged into reads and writes; for Firestore, scope is validated on writes and typically enforced by path‑scoped collections. Managed fields are read‑only for updates and validated or ignored on create.
 
-For the following examples let's assume a simple collection type representing tasks:
+For the following examples, let's assume a simple collection type representing tasks:
 
 ```typescript
 type Task = {
@@ -95,14 +95,14 @@ const repo = createFirestoreRepo({
 });
 ```
 
-It's recommended to provide a factory for repository instantiation to encapsulate constraints / managed fields and db/collection names. For example in MongoDB:
+It’s recommended to provide a factory to encapsulate configuration (managed fields, scope) and database/collection names. For example, in MongoDB:
 
 ```typescript
 function createTaskRepo(client: MongoClient, tenantId: string) {
   return createMongoRepo({
     collection: client.db('app').collection<Task>('tasks'),
     mongoClient: client,
-    scope: { organizationId },
+    scope: { tenantId },
   });
 }
 ```
@@ -110,29 +110,78 @@ function createTaskRepo(client: MongoClient, tenantId: string) {
 A Slire repository implements a set of basic, DB-agnostic CRUD operations:
 
 ```typescript
-const id = await repo.create(taskFromImport());
+const id = await repo.create({ title: 'Draft onboarding guide', status: 'todo' });
 
-await repo.update(id, { set: { totalClaim: 42 }, unset: 'attachments' });
+await repo.update(id, { set: { status: 'in_progress' } });
 
 await repo.delete(id);
 
 await repo.getById(id); // undefined
 ```
 
-All read operations support projections. `find` returns a single‑use `QueryStream` you can iterate or convert with `.toArray()`.
+All read operations support projections. `find` returns a single‑use `QueryStream` you can iterate over or convert with `.toArray()`.
 
 ```typescript
-const justId = await repo.getById(id, { id: true }); // -> { id: string } | undefined
+const summary = await repo.getById(id, { id: true, title: true, status: true }); // -> { id: string; title: string; status: Task['status'] } | undefined
 
-// Stream reads (single-use)
-for await (const task of repo.find({})) {
-  doSomething(task);
+for await (const chunk of repo.find({ status: 'in_progress' }).paged(50)) {
+  doSomething(chunk);
 }
 
-const list = await repo.find({}).skip(5).take(10).toArray();
+const list = await repo
+  .find({}, { projection: { id: true, title: true } })
+  .skip(5)
+  .take(10)
+  .toArray();
 ```
 
 The full list is documented in the [API Reference](#api-reference-core-crud-operations-slire-interface) section.
+
+Here's how [transactions](#runtransaction) work:
+
+```typescript
+await repo.runTransaction(async (tx) => {
+  // tx is a transaction-aware repository instance
+  // read overdue in-progress tasks, then archive them
+  const now = new Date();
+  const tasks = await tx
+    .find({ status: 'in_progress' }, { id: true, dueDate: true })
+    .toArray();
+
+  const overdueIds = tasks
+    .filter((t) => t.dueDate && t.dueDate < now)
+    .map((t) => t.id);
+
+  if (overdueIds.length > 0) {
+    await tx.updateMany(overdueIds, { set: { status: 'archived' } });
+  }
+});
+```
+
+This is a partially contrived example. For MongoDB, you’d normally perform a query‑based update in one round trip using the native driver directly. Firestore does not support query‑based writes, so they are not part of Slire’s API.
+
+The example above can be written more verbosely like this when working with MongoDB (revealing how `runTransaction` is implemented):
+
+```typescript
+await mongoClient.withSession(async (session) => {
+  await session.withTransaction(async () => {
+    const tx = repo.withSession(session); // a new transaction-aware repo instance
+
+    const now = new Date();
+    const tasks = await tx
+      .find({ status: 'in_progress' }, { id: true, dueDate: true })
+      .toArray();
+
+    const overdueIds = tasks
+      .filter((t) => t.dueDate && t.dueDate < now)
+      .map((t) => t.id);
+
+    if (overdueIds.length > 0) {
+      await tx.updateMany(overdueIds, { set: { status: 'archived' } });
+    }
+  });
+});
+```
 
 ## API Overview
 
@@ -190,8 +239,19 @@ MongoDB
 
 ```typescript
 await repo.runTransaction(async (tx) => {
-  const items = await tx.find({ status: 'active' }, { id: true }).toArray();
-  await tx.updateMany(items.map(i => i.id), { set: { processed: true } });
+  const now = new Date();
+  // Read overdue in-progress tasks, then archive them
+  const tasks = await tx
+    .find({ status: 'in_progress' }, { id: true, dueDate: true })
+    .toArray();
+
+  const overdueIds = tasks
+    .filter(t => t.dueDate && t.dueDate < now)
+    .map(t => t.id);
+
+  if (overdueIds.length > 0) {
+    await tx.updateMany(overdueIds, { set: { status: 'archived' } });
+  }
 });
 ```
 
@@ -199,8 +259,20 @@ Firestore
 
 ```typescript
 await repo.runTransaction(async (tx) => {
-  const page = await tx.findPage({ status: 'active' }, { limit: 20 });
-  await tx.updateMany(page.items.map(i => i.id), { set: { processed: true } });
+  // Firestore requires reads before writes in a transaction
+  const page = await tx.findPage(
+    { status: 'in_progress' },
+    { limit: 50, projection: { id: true, dueDate: true } }
+  );
+
+  const now = new Date();
+  const overdueIds = page.items
+    .filter(t => t.dueDate && t.dueDate < now)
+    .map(t => t.id);
+
+  if (overdueIds.length > 0) {
+    await tx.updateMany(overdueIds, { set: { status: 'archived' } });
+  }
 });
 ```
 
@@ -274,18 +346,20 @@ Here's how [transactions](#runtransaction) work:
 
 ```typescript
 await repo.runTransaction(async (tx) => {
-  // tx is a transaction-session-aware repository instance
-  // providing exactly the same functionality as the outer repo
-  // except that all its operations happen in a transaction
+  // tx is a transaction-aware repository instance
+  // read overdue in-progress tasks, then archive them
+  const now = new Date();
+  const tasks = await tx
+    .find({ status: 'in_progress' }, { id: true, dueDate: true })
+    .toArray();
 
-  // a simple query with projection
-  const johns = await tx.find({ userId: 'john-doe' }, { id: true }); // result is of type { id: string }[]
+  const overdueIds = tasks
+    .filter((t) => t.dueDate && t.dueDate < now)
+    .map((t) => t.id);
 
-  // update based on what we just read
-  await tx.updateMany(
-    johns.map((j) => j.id),
-    { set: { country: someCondition(johns) ? 'US' : 'UK' } }
-  );
+  if (overdueIds.length > 0) {
+    await tx.updateMany(overdueIds, { set: { status: 'archived' } });
+  }
 });
 ```
 
@@ -296,12 +370,18 @@ await mongoClient.withSession(async (session) => {
   await session.withTransaction(async () => {
     const tx = repo.withSession(session); // a new transaction-aware repo instance
 
-    const johns = await tx.find({ userId: 'john-doe' }, { id: true });
+    const now = new Date();
+    const tasks = await tx
+      .find({ status: 'in_progress' }, { id: true, dueDate: true })
+      .toArray();
 
-    await tx.updateMany(
-      johns.map((j) => j.id),
-      { set: { country: someCondition(johns) ? 'US' : 'UK' } }
-    );
+    const overdueIds = tasks
+      .filter((t) => t.dueDate && t.dueDate < now)
+      .map((t) => t.id);
+
+    if (overdueIds.length > 0) {
+      await tx.updateMany(overdueIds, { set: { status: 'archived' } });
+    }
   });
 });
 ```

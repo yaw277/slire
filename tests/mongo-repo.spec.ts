@@ -12,7 +12,7 @@ import {
 import { mongo, setupMongo, teardownMongo } from './mongo-fixture';
 import { ascendingIds, pages } from './utils';
 
-describe('createSmartMongoRepo', function () {
+describe('createtMongoRepo', function () {
   jest.setTimeout(60 * 1000);
   const COLLECTION_NAME = 'generic_repo_test';
 

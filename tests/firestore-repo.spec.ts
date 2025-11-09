@@ -19,7 +19,7 @@ import {
 } from './firestore-fixture';
 import { ascendingIds, pages } from './utils';
 
-describe('createSmartFirestoreRepo', function () {
+describe('createFirestoreRepo', function () {
   jest.setTimeout(60 * 1000);
   const COLLECTION_NAME = 'generic_repo_test';
 
