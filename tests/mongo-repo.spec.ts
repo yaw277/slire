@@ -2173,6 +2173,42 @@ describe('createtMongoRepo', function () {
   });
 
   describe('scoping', () => {
+    it('should reject nested scope values at instantiation time', async () => {
+      expect(() =>
+        createMongoRepo<TestEntity>({
+          collection: testCollection(),
+          mongoClient: mongo.client,
+          scope: { tenant: { id: 'acme' } } as unknown as Partial<TestEntity>,
+        }),
+      ).toThrow(/Invalid scope values/i);
+    });
+
+    it('should reject non-primitive scope values (array, function, null)', async () => {
+      expect(() =>
+        createMongoRepo<TestEntity>({
+          collection: testCollection(),
+          mongoClient: mongo.client,
+          scope: { age: [30] } as unknown as Partial<TestEntity>, // array
+        }),
+      ).toThrow(/Invalid scope values/i);
+      expect(() =>
+        createMongoRepo<TestEntity>({
+          collection: testCollection(),
+          mongoClient: mongo.client,
+          scope: {
+            tenantId: (() => 'acme') as any,
+          } as unknown as Partial<TestEntity>, // function
+        }),
+      ).toThrow(/Invalid scope values/i);
+      expect(() =>
+        createMongoRepo<TestEntity>({
+          collection: testCollection(),
+          mongoClient: mongo.client,
+          scope: { tenantId: null } as unknown as Partial<TestEntity>, // null
+        }),
+      ).toThrow(/Invalid scope values/i);
+    });
+
     it('scoped repo only has access to entities matching the scope', async () => {
       const repo = createMongoRepo({
         collection: testCollection(),

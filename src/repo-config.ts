@@ -181,6 +181,24 @@ export function repoConfig<T extends { id: string }>(
     );
   }
 
+  // Validate scope values are primitives (string | number | boolean).
+  // Nested objects, arrays, functions, symbols, bigint, and null are not allowed.
+  const invalidScopeEntries = Object.entries(scopeObj).filter(([, value]) => {
+    if (value === undefined) return false;
+    const t = typeof value;
+    if (t === 'string' || t === 'number' || t === 'boolean') {
+      return false;
+    }
+    return true;
+  });
+  if (invalidScopeEntries.length > 0) {
+    const badKeys = invalidScopeEntries.map(([k]) => k).join(', ');
+    throw new Error(
+      `Invalid scope values for keys [${badKeys}]. Scope values must be primitives (string | number | boolean). ` +
+        'Nested objects/arrays are not supported. Consider flattening your scope fields (e.g., use "tenantId" instead of "tenant.id").',
+    );
+  }
+
   // Validation - ensure no duplicate keys
   const duplicates = configuredKeys.filter(
     (item, index) => configuredKeys.indexOf(item) !== index,

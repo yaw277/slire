@@ -2300,6 +2300,42 @@ describe('createFirestoreRepo', function () {
   });
 
   describe('scoping', () => {
+    it('should reject nested scope values at instantiation time', async () => {
+      expect(() =>
+        createFirestoreRepo<TestEntity>({
+          collection: testCollection(),
+          firestore: firestore.firestore,
+          scope: { tenant: { id: 'acme' } } as unknown as Partial<TestEntity>,
+        }),
+      ).toThrow(/Invalid scope values/i);
+    });
+
+    it('should reject non-primitive scope values (array, function, null)', async () => {
+      expect(() =>
+        createFirestoreRepo<TestEntity>({
+          collection: testCollection(),
+          firestore: firestore.firestore,
+          scope: { age: [30] } as unknown as Partial<TestEntity>, // array
+        }),
+      ).toThrow(/Invalid scope values/i);
+      expect(() =>
+        createFirestoreRepo<TestEntity>({
+          collection: testCollection(),
+          firestore: firestore.firestore,
+          scope: {
+            tenantId: (() => 'acme') as any,
+          } as unknown as Partial<TestEntity>, // function
+        }),
+      ).toThrow(/Invalid scope values/i);
+      expect(() =>
+        createFirestoreRepo<TestEntity>({
+          collection: testCollection(),
+          firestore: firestore.firestore,
+          scope: { tenantId: null } as unknown as Partial<TestEntity>, // null
+        }),
+      ).toThrow(/Invalid scope values/i);
+    });
+
     it('reads do not enforce field scope; writes still validate when scope provided', async () => {
       const repo = createFirestoreRepo({
         collection: testCollection(),

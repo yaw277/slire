@@ -613,8 +613,160 @@ Counts entities that match a specification (spec resolves to an exact‑equality
 
 See database‑specific notes under [count](#count).
 
+## Configuration
+
+This section documents every configuration option the repository understands. For brevity, all code samples below use `createMongoRepo`; semantics are identical for Firestore unless a Firestore note says otherwise.
+
+- Scope: [scope](#scope-instantiation-parameter)
+- Identity: [generateId](#generateid), [idKey](#idkey), [mirrorId](#mirrorid)
+- Consistency: [softDelete](#softdelete), [traceTimestamps](#tracetimestamps), [timestampKeys](#timestampkeys),
+ [version](#version)
+- Tracing: [traceKey](#tracekey), [traceStrategy](#tracestrategy), [traceLimit](#tracelimit), [traceContext](#tracecontext-instantiation-parameter)
+
+
+### scope
+
+Defines the fixed filter used to enforce multi‑tenancy or other partitioning rules (for example, `{ tenantId: 'acme-123' }`). Scope can include multiple properties (for example, `{ tenantId: 'acme-123', regionId: 'eu', isActive: true }`). It expresses required field values and is part of the repository’s contract for all operations; see the DB‑specific notes below for how each implementation enforces it.
+
+MongoDB notes:
+- Scope is merged into reads, updates, and deletes.
+- Create operations validate any explicit scope fields in the payload and always write the configured scope values.
+
+Firestore notes:
+- Slire assumes path‑scoped collections (for example, `tenants/{tenantId}/tasks`); scope is not added to read filters because the path enforces it.
+- Pass `scope` at repository creation if you want write‑time validation; mismatches cause the operation to fail.
+ 
+Limitation:
+ - Nested scope objects are not supported; scope keys must reference top‑level primitive fields (for example, `tenantId`, not `tenant.id`). The repository enforces this at instantiation time.
+
+Example:
+
+```typescript
+const repo = createMongoRepo({
+  collection: client.db('app').collection<Task>('tasks'),
+  mongoClient: client,
+  scope: { tenantId: 'acme-123' },
+});
+
+// ✅ Create: no explicit scope -> repo sets configured scope
+await repo.create({
+  title: 'Onboard new customer',
+  status: 'todo',
+});
+
+// ✅ Create: explicit scope allowed if matching repo scope
+await repo.create({
+  tenantId: 'acme-123', // matches scope ✓
+  title: 'Onboard new customer',
+  status: 'todo',
+});
+
+// ❌ Create: scope validation fails
+await repo.create({
+  tenantId: 'different', // doesn't match scope - throws error
+  title: 'Wrong tenant',
+  status: 'todo',
+});
+
+// ✅ Update: scope properties are excluded from updates (readonly)
+await repo.update(taskId, {
+  set: { title: 'Refine onboarding guide' }, // OK - non-scope property
+});
+
+// ❌ Update: scope properties cannot be updated
+await repo.update(taskId, {
+  set: { tenantId: 'new-tenant' }, // TypeScript error + runtime error
+});
+```
+
+### generateId
+
+Controls how the datastore identifier is created. The default `'server'` uses the driver’s native id (MongoDB `ObjectId`, Firestore `collection.doc().id`). Supplying a function switches to a client‑defined string id, which is written as the datastore id.
+
+Firestore: the generated value becomes `doc.id`.  
+MongoDB: the generated value is stored directly in `_id` (no `ObjectId` conversion).
+
+Example:
+```ts
+const repo = createMongoRepo<Task>({
+  collection,
+  mongoClient,
+  options: { generateId: () => `task_${crypto.randomUUID()}` },
+});
+```
+
+### idKey
+
+Sets which property on the entity exposes the datastore id on read (default `'id'`). This value is computed from `_id` (MongoDB) or `doc.id` (Firestore). It is not written to the document unless you enable [mirrorId](#mirrorid).
+
+### mirrorId
+
+When `true` (default `false`), the repository also writes the public id into the document under `idKey`. This can be useful when you want to query by `idKey` as a normal field using the native driver.
+
+### softDelete
+
+Enables soft deletion (`/_deleted` marker) and automatically excludes soft‑deleted documents from reads and counts. Updates only affect active documents.
+
+MongoDB: “active” means `_deleted` is absent; deletes set `_deleted: true`.  
+Firestore: new documents are created with `_deleted: false`; queries append `where('_deleted', '==', false)`.
+
+### traceTimestamps
+
+Selects the timestamp source for `_createdAt`, `_updatedAt`, and `_deletedAt` when timestamping is enabled. Use `true` for application time (`new Date()`), `'server'` for server‑side timestamps, or `() => Date` for custom generation (handy in tests).
+
+MongoDB: `'server'` uses `$currentDate`.  
+Firestore: `'server'` uses `FieldValue.serverTimestamp()`.
+
+### timestampKeys
+
+Overrides the default timestamp field names (`_createdAt`, `_updatedAt`, `_deletedAt`). Supplying this option implies timestamping is enabled (equivalent to `traceTimestamps: true`). Provided keys become repo‑managed (readonly); unspecified keys keep defaults.
+
+Example:
+```ts
+const repo = createMongoRepo<Task>({
+  collection, mongoClient,
+  options: { timestampKeys: { createdAt: 'createdAt', updatedAt: 'updatedAt' } }
+});
+```
+
+### version
+
+Enables optimistic versioning. With `true`, the repository uses `_version`; you can also provide a custom numeric field from your entity. The version is set to `1` on create and incremented on every update and soft delete.
+
+### traceKey
+
+Sets the field used to store trace data written on each write (default `_trace`). The default field is hidden on reads unless you explicitly model it in the entity type.
+
+### traceStrategy
+
+Controls how trace data is stored:
+- `latest` (default): keep only the most recent trace object.
+- `bounded`: append to an array capped by [traceLimit](#tracelimit).
+- `unbounded`: append to an unbounded array.
+
+Firestore: `bounded` is not supported and will throw at repository creation.
+
+### traceLimit
+
+The maximum number of trace entries to keep when `traceStrategy` is `bounded`. Ignored for other strategies.
+
+### traceContext (instantiation parameter)
+
+Provides a base trace context that is merged into every write. You can extend or override it per operation via `options.mergeTrace` on `create`, `update`, and `delete`.
+
+Example:
+```ts
+const repo = createMongoRepo<Task>({
+  collection, mongoClient,
+  traceContext: { userId, requestId },
+  options: { traceStrategy: 'latest', traceTimestamps: 'server' },
+});
+await repo.update(id, { set: { status: 'done' } }, { mergeTrace: { action: 'complete-task' } });
+```
+
 ---
 content below is temporary and needs restructure...
+
 ---
 
 ## MongoDB Implementation
