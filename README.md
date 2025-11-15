@@ -301,21 +301,24 @@ If you need atomicity across the whole input, wrap the call in a transaction via
 
 `update(id: string, update: UpdateOperation<UpdateInput>, options?: { mergeTrace?: any }): Promise<void>`
 
-Updates a single entity identified by its ID. The update operation supports both `set` (to update fields) and `unset` (to remove optional fields) operations, which can be used individually or combined. The `unset` field accepts either a single optional property path (as a string) or an array of paths. You can also specify nested fields via dot notation (e.g., `address.street`). The repository excludes soft-deleted entities by default to ensure only active entities are updated. Note that managed fields (scope properties, system fields like timestamps/version/id/trace) cannot be modified through updates - the `UpdateOperation<UpdateInput>` type excludes these fields, ensuring type safety at compile time. Implementations should also perform runtime checks to ensure that managed fields are not tampered with. Any configured timestamps (like `updatedAt`), versioning increments, and trace context are applied automatically. The optional `mergeTrace` parameter allows adding operation-specific trace context. No error is thrown if the entity doesn't exist or doesn't match the scope.
+Updates a single entity by ID. Applies scope and excludes soft‑deleted documents (when enabled). Supports `set` and `unset` (single path or array; dot paths supported). Managed fields (id, scope, timestamps, version, trace) cannot be updated; this is enforced by types and validated at runtime. Timestamps/version are applied automatically, and `options.mergeTrace` merges per‑operation trace context. No error is thrown if the entity doesn’t exist or is out of scope.
 
-Example with nested unsets (dot paths):
+Firestore notes:
+- Firestore cannot perform "update with filter". To ensure we only update active (not soft-deleted) documents, the repo first queries for the doc by id with `_deleted == false`, then updates the returned doc reference.
+- Transaction consequence: Firestore requires that all reads in a transaction happen before any writes. Because `update` performs that initial read, call it in the transaction’s read phase (before any writes). If you’ve already issued writes in the same transaction, defer `update` to a separate transaction or restructure your logic to read first, then write.
+
+Examples:
 
 ```ts
-// Single string unset
 await repo.update(id, {
-  set: { status: 'processed' },
-  unset: 'optionalTopLevelField',
+  set: { status: 'in_progress', title: 'Refine onboarding guide' },
 });
 
-// Array unset (multiple properties)
+await repo.update(id, { unset: 'dueDate' });
+
 await repo.update(id, {
-  set: { status: 'processed' },
-  unset: ['optionalTopLevelField', 'address.street', 'metadata.tags'],
+  set: { status: 'done' },
+  unset: ['metadata.audit.reviewedBy', 'metadata.flags.blocked'],
 });
 ```
 
