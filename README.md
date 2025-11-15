@@ -246,7 +246,11 @@ The operations below comprise the full set of repository functions in Slire. The
 
 `getById<P extends Projection<T>>(id: string, projection: P): Promise<Projected<T, P> | undefined>`
 
-Retrieves a single entity by its ID, automatically applying the repository's scope filter. Returns `undefined` if no entity is found with the given ID or if the entity exists but doesn't match the scope (e.g., wrong organization). When using the projection variant, only the specified fields are returned and the result is properly typed to reflect the projection.
+Retrieves a single entity by its ID, applying scope and consistency rules. Returns `undefined` if no entity exists with the given ID, if it’s out of scope (e.g., wrong tenant), or if it’s soft‑deleted (when enabled). With a projection, only the requested fields are returned and the result type reflects the projection.
+
+Firestore notes:
+- Slire expects path‑scoped collections; scope is not added to read filters (it’s enforced by the collection path and validated on writes).
+- Projection is applied client-side.
 
 ### getByIds
 
@@ -254,7 +258,11 @@ Retrieves a single entity by its ID, automatically applying the repository's sco
 
 `getByIds<P extends Projection<T>>(ids: string[], projection: P): Promise<[Projected<T, P>[], string[]]>`
 
-Bulk version of `getById` that retrieves multiple entities by their IDs. Returns a tuple containing two arrays: the first contains all found entities, the second contains the IDs that were not found (either because they don't exist or don't match the scope). The order of found entities is not guaranteed to match the input order. When using the projection variant, only the specified fields are returned for each entity.
+Bulk version of `getById`. Returns a tuple `[found, notFoundIds]`. An ID is included in `notFoundIds` if it does not exist, is out of scope, or is soft‑deleted. The order of found entities is not guaranteed to match the input order. With the projection variant, only the requested fields are returned and the result types reflect the projection.
+
+Firestore notes:
+- Slire expects path‑scoped collections; scope is not added to read filters (it’s enforced by the collection path and validated on writes).
+- Projection is applied client-side.
 
 ### create
 
