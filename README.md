@@ -268,7 +268,11 @@ Firestore notes:
 
 `create(entity: CreateInput, options?: { mergeTrace?: any }): Promise<string>`
 
-Creates a new entity in the repository. Returns the generated ID for the created entity. The repository automatically generates a unique ID, applies configured scope values, and generates all system-managed fields (timestamps, version, trace context if enabled). While `CreateInput` allows managed fields to be present in the input for convenience, system fields are ignored and scope fields are validated - the operation fails if provided scope values don't match the repository's configured scope. The optional `mergeTrace` parameter allows adding operation-specific trace context that gets merged with the repository's base trace context.
+Creates a new entity. Generates an ID, applies scope values, and sets managed fields (timestamps, version, and trace if enabled). Managed system fields present in the input are ignored; scope fields are validated and must match the repository’s scope or the operation fails. Returns the generated ID. Use `options.mergeTrace` to add per‑operation trace context that is merged with the repository’s base trace.
+
+Firestore notes:
+- Slire expects path‑scoped collections; scope is validated on writes.
+- When soft delete is enabled, documents are created with `_deleted: false` so reads can filter server‑side with `where('_deleted', '==', false)` (Firestore cannot query "field does not exist").
 
 Note: This method delegates to `createMany` internally and can therefore throw `CreateManyPartialFailure` under the same conditions (for a single-entity batch, see below).
 
@@ -276,9 +280,22 @@ Note: This method delegates to `createMany` internally and can therefore throw `
 
 `createMany(entities: CreateInput[], options?: { mergeTrace?: any }): Promise<string[]>`
 
-Bulk version of `create` that creates multiple entities in a single operation. Returns an array of generated IDs corresponding to the created entities. The order of returned IDs matches the order of input entities. All entities are subject to the same automatic ID generation, scope validation, and consistency feature handling (including trace context if enabled) as the single `create` function. The optional `mergeTrace` parameter allows adding operation-specific trace context that gets merged with the repository's base trace context and applied to all entities in the batch.
+Creates multiple entities. Generates IDs, applies scope, and sets managed fields (timestamps, version, and trace if enabled) for each entity. Returns generated IDs in the same order as the input. `options.mergeTrace` adds per‑operation trace context to all entities in the batch.
 
-Error handling and partial writes: The function performs a bulk upsert using `$setOnInsert` so existing documents are never silently updated. It generates IDs up front and, on success, returns them in the same order as the input entities. For large inputs, the operation runs in chunks to respect MongoDB limits. If a chunk cannot be fully inserted (for example, due to a duplicate key), the function throws `CreateManyPartialFailure`. This error reports the public IDs that were inserted up to the failure point (including prior chunks and the inserted subset of the failing chunk) and the public IDs that were not inserted (the non-inserted subset of the failing chunk plus all subsequent chunks that are skipped). This makes partial results explicit and allows callers to reconcile state or retry as needed. If you need atomicity, wrap the call in a transaction with `runTransaction`.
+Firestore notes:
+- Slire expects path‑scoped collections; scope is validated on writes.
+- When soft delete is enabled, documents are created with `_deleted: false` so reads can filter server‑side with `where('_deleted', '==', false)`.
+- Writes are chunked to Firestore batch limits; each batch is atomic.
+
+MongoDB notes:
+- Uses bulk upsert with `$setOnInsert` to avoid overwriting existing documents.
+- Writes are chunked to respect driver limits.
+
+Error handling and partial writes: IDs are prepared up front. The operation runs in chunks to respect backend limits. If a chunk fails:
+- MongoDB: the driver may have inserted a subset of the current chunk; the function throws `CreateManyPartialFailure` with `insertedIds` including prior chunks plus the inserted subset of the failing chunk, and `failedIds` including the remaining items of the failing chunk plus all subsequent chunks.
+- Firestore: the entire failing batch is rolled back; the function throws `CreateManyPartialFailure` with `insertedIds` from prior batches only and `failedIds` for the failed batch and all subsequent batches.
+
+If you need atomicity across the whole input, wrap the call in a transaction via `runTransaction`.
 
 ### update
 
