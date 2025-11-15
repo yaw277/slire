@@ -499,69 +499,56 @@ The `FindPageOptions` parameter includes:
 - `orderBy?: Record<string, 1 | -1 | 'asc' | 'desc' | 'ascending' | 'descending'>` - Sort order (dot notation supported)
 - `onScopeBreach?: 'empty' | 'error'` - Handle scope breaches (default: 'empty')
 
+Firestore notes:
+- Path‑scoped collections are expected; scope is not added to read filters.
+- When soft delete is enabled, Slire appends a server‑side filter to exclude soft‑deleted documents.
+- Projection is applied server‑side for non‑`idKey` fields; `idKey` is derived from `doc.id`.
+- If `orderBy` doesn’t include an id field, `__name__` is appended as a tiebreaker for deterministic ordering.
+- Cursor format is the document id; invalid/unknown cursors result in an error.
+
+MongoDB notes:
+- Scope is merged into filters; soft‑deleted documents are excluded when enabled.
+- Public `idKey` maps to `_id`; string ids are converted to `ObjectId` when using server‑generated ids.
+- If `orderBy` doesn’t include `_id`, `_id` is appended as a stable tiebreaker.
+- Cursor format is the document `_id` (as a string); invalid cursors result in an error.
+- For performant custom `orderBy`, create a compound index on your sort fields with `_id` as the final field.
+
 Returns `PageResult<T>` containing:
 
 - `items: T[]` - The page of results (up to `limit` items)
 - `nextCursor: string | undefined` - Cursor for next page (undefined when no more results)
 
-**Usage Examples:**
+Examples:
 
 ```typescript
-// First page
-const page1 = await repo.findPage(
-  { status: 'active' },
-  { limit: 20, orderBy: { createdAt: 'desc' } }
+const pageParams = {
+  limit: 20,
+  orderBy: { _createdAt: 'desc' },
+  projection: { id: true, title: true },
+ };
+
+let page = await repo.findPage(
+  { status: 'in_progress' },
+  pageParams
 );
 
-// Subsequent pages using cursor
-let currentPage = page1;
-while (currentPage.nextCursor) {
-  currentPage = await repo.findPage(
-    { status: 'active' },
+do {
+  doSmth(page.items);
+  if (!page.nextCursor) break;
+  page = await repo.findPage(
+    { status: 'in_progress' },
     {
-      limit: 20,
-      orderBy: { createdAt: 'desc' },
-      cursor: currentPage.nextCursor,
+      ...pageParams,
+      cursor: page.nextCursor,
     }
   );
-  // Process currentPage.items
-}
-
-// With projection
-const page = await repo.findPage(
-  { isActive: true },
-  {
-    limit: 10,
-    projection: { id: true, name: true },
-    orderBy: { name: 'asc' },
-  }
-);
+} while (true);
 ```
-
-**Performance Considerations:**
-
-- **Cursor-based pagination** avoids the performance penalty of `skip()` for large offsets, providing consistent O(1) navigation performance
-- **Cursor format**: For MongoDB it's the document `_id` (ObjectId string), for Firestore it's the document ID
-- **Cursor validity**: Cursors remain valid as long as the referenced document exists. If deleted, `findPage` throws an error
-- **Custom ordering with cursors**: When using custom `orderBy`, the implementation builds a compound filter that respects both the sort fields and the cursor position, ensuring correct pagination even with non-unique sort values
-- **Index requirements for MongoDB**: For optimal performance with custom `orderBy`, create a compound index on your sort fields plus `_id` as the final field:
-
-  ```javascript
-  // Example: Sorting by { age: 'desc', name: 'asc' }
-  db.collection.createIndex({ age: -1, name: 1, _id: 1 });
-
-  // Multi-field sort with filters
-  db.collection.createIndex({ status: 1, createdAt: -1, _id: 1 });
-  ```
-
-- **Null handling**: MongoDB sorts null/undefined values before other values in ascending order, after other values in descending order. The cursor implementation correctly handles these edge cases
-- **Default ordering**: If no `orderBy` is specified, results are sorted by `_id` (MongoDB) or `__name__` (Firestore) ascending for deterministic pagination
-- **Always use \_id as tiebreaker**: The implementation automatically adds `_id` to the sort order if not present, ensuring unique, stable ordering even when sort field values are not unique
 
 **When to Use:**
 
-- **Use `findPage`** for UI pagination, API endpoints with page tokens, or iterating through large datasets across multiple requests
-- **Use `find().skip().take()`** for small result sets, client-side streaming, or when you need the full QueryStream interface
+- Use `findPage` for UI pagination, API endpoints with page tokens, or iterating through large datasets across multiple requests
+- Use `find().skip().take()` for small result sets, client-side streaming, or when you need the full QueryStream interface
 
 ### findPageBySpec
 
