@@ -2,14 +2,10 @@
 
 - [Install](#install)
 - [Quickstart](#quickstart)
-- [API Overview](#api-overview)
-- [Configuration](#configuration)
-- [Database Differences](#database-differences)
-  - [MongoDB](#mongodb)
-  - [Firestore](#firestore)
-- [Transactions](#transactions)
-- [Pagination](#pagination)
-- [Tracing and Audit Overview](#tracing-and-audit-overview)
+- [API](#api)
+
+---
+
 - [Recommended Usage Patterns](#recommended-usage-patterns)
 - [Limitations and Caveats](#limitations-and-caveats)
 - [FAQ](#faq)
@@ -216,121 +212,33 @@ export async function archiveOverdueInProgressTasks({
 
 This keeps database and collection details encapsulated by your factory while letting you use the full power of the native driver. You still benefit from consistent scope enforcement and managed fields without rewriting that logic.
 
-## API Overview
 
-- **CRUD**: `getById`, `getByIds`, `create`, `createMany`, `update`, `updateMany`, `delete`, `deleteMany`
-- **Query**: `find`, `findBySpec`, `findPage`, `findPageBySpec`, `count`, `countBySpec`
-- **Transactions**:
-  - MongoDB: `withSession(session)`, `runTransaction(cb)`
-  - Firestore: `withTransaction(tx)`, `runTransaction(cb)`
-- **Helpers** (advanced/native use):
-  - `collection` (native handle)
-  - `applyConstraints(...)` (adds scope, soft-delete filtering)
-  - `buildUpdateOperation(update, mergeTrace?)` (applies timestamps/version/trace; protects readonly fields)
 
-For in-depth details, see the sections below (MongoDB/Firestore implementations and the full API reference).
 
-## Configuration
 
-Key options (shared unless noted):
 
-- **Identity**
-  - `generateId?: 'server' | (() => string)` — default `'server'` (Mongo ObjectId / Firestore doc id)
-  - `idKey?: keyof T` — default `'id'`
-  - `mirrorId?: boolean` — persist public id in documents (off by default)
-- **Consistency**
-  - `softDelete?: boolean` — enable soft delete
-  - `traceTimestamps?: true | 'server' | (() => Date)` — timestamp source
-  - `timestampKeys?: { createdAt?; updatedAt?; deletedAt? }` — custom keys imply timestamping
-  - `version?: true | keyof T` — versioning field (default `_version`)
-- **Tracing**
-  - `traceKey?: keyof T` — default `_trace`
-  - `traceStrategy?: 'latest' | 'bounded' | 'unbounded'`
-    - Firestore: `'bounded'` not supported (throws)
-  - `traceLimit?: number` — required for `'bounded'`
+## API
 
-## Database Differences
+- CRUD
+  - [getById](#getbyid), [getByIds](#getbyids)
+  - [create](#create), [createMany](#createmany)
+  - [update](#update), [updateMany](#updatemany)
+  - [delete](#delete), [deleteMany](#deletemany)
+- Queries
+  - [find](#find), [findBySpec](#findbyspec)
+  - [findPage](#findpage), [findPageBySpec](#findpagebyspec)
+  - [count](#count), [countBySpec](#countbyspec)
+- Transactions and helpers are implementation specific
+  - [MongoDB Implementation](#mongodb-implementation)
+  - [Firestore Implementation](#firestore-implementation)
 
-### MongoDB
+The operations below comprise the full set of repository functions in Slire. The interface is database‑agnostic; where an implementation exhibits different performance characteristics or constraints, those differences are called out where relevant.
 
-- **Soft delete**: filters on “marker does not exist”; deletes set the marker.
-- **Pagination**: cursor is `_id` (ObjectId string) and `_id` is always a tiebreaker; compound sorts supported with a cursor filter.
-- **Updates**: query-based (`updateMany`); large inputs chunked to respect driver limits.
-- **Tracing**: all strategies supported; server timestamps via `$currentDate` when configured.
+**Note 1**: In the function signatures below, `T` represents the entity type; `UpdateInput` is the subset of `T` that can be modified via updates (excluding managed fields); and `CreateInput` is the input shape for creating entities (includes optional managed fields). Managed fields include system fields (id, timestamps, version, soft‑delete markers) and scope fields.
 
-### Firestore
+**Note 2**: All read functions support projections, specified as `{ propA: true, propB: true }` where keys are valid properties of `T`. The return type reflects the projection.
 
-- **Soft delete**: documents created with `_deleted: false`, reads filter `_deleted == false`.
-- **Pagination**: cursor is document id; sort requires `__name__` tiebreaker.
-- **Updates**: batched writes; multi-document updates chunked (`IN` limits).
-- **Tracing**: supports `'latest'` and `'unbounded'` (throws on `'bounded'`).
-- **Transactions**: reads must occur before writes; repository methods that read inside must be called in the read phase.
-
-## API Reference Core CRUD Operations (Slire interface)
-
-The operations listed here resemble the full set of DB-agnostic functions in Slire. At time of writing only the MongoDB implementation existed. So some descriptions might mention some characteristics specific to MongoDB. However, the interface is designed to
-be as simple as possible to allow being implemented for other DBs, particularly Firestore.
-
-**Note 1**: In the function signatures below, `T` represents the entity type, `UpdateInput` represents the subset of `T` that can be modified via updates (excluding managed fields), and `CreateInput` represents the input shape for creating entities (includes optional managed fields). Managed fields include system fields (id, timestamps, version, soft-delete markers) and scope fields.
-
-**Note 2**: All read functions support projections. A projection is given in the form `{ propA: true, propB: true }` where `propA` and `propB` are valid properties in `T`. A projection is properly reflected in the return type.
-
-!! TODO - rephrase / clarify
-**Note 3**: Scope filtering and other consistence features are not part of this interface as they are basically repository options that get only mentioned during instantiation. However, they might be mentioned in the function descriptions describing the intended behavior as part of the interface contract any implemention must adhere to.
-
-#### Input Type Distinction
-
-Slire uses distinct input types for different operations to provide compile-time safety:
-
-- **`UpdateInput`**: Used for update operations - excludes all managed fields (system fields like timestamps/version/id, plus scope fields). This prevents accidental modification of fields that should be repository-controlled.
-- **`CreateInput`**: Used for create/upsert operations - includes all `UpdateInput` fields plus optional managed fields. The managed fields are allowed purely as a convenience feature so you don't have to manually strip them from objects. System fields (timestamps, version, id) are ignored internally and auto-generated. Scope fields are validated to match the repository's configured scope values - mismatches cause the operation to fail.
-
-The relationship: `CreateInput = UpdateInput & Partial<ManagedFields>`. This design ensures updates are strict while creation validates managed fields for correctness (scope fields must match, system fields are ignored) for developer convenience.
-
-**Example:**
-
-```typescript
-type User = {
-  id: string;
-  organizationId: string; // scope field
-  name: string;
-  email: string;
-  _createdAt?: Date;
-  _updatedAt?: Date;
-};
-
-// With scope { organizationId: 'acme-123' } and timestamps enabled:
-// UpdateInput = { name: string; email: string }
-// CreateInput = { name: string; email: string; id?: string; organizationId?: string; _createdAt?: Date; _updatedAt?: Date }
-
-// ✅ Valid update - only user data
-await repo.update(id, { set: { name: 'John' } });
-
-// ❌ Compile error - can't update managed fields (timestamps)
-await repo.update(id, { set: { _createdAt: new Date() } });
-
-// ❌ Compile error - can't update managed fields (scope)
-await repo.update(id, { set: { organizationId: 'other-org' } });
-
-// ✅ Valid create - managed fields optional
-await repo.create({ name: 'John', email: 'john@example.com' });
-
-// ✅ Valid create - matching scope field ignored, others auto-generated
-await repo.create({
-  id: 'will-be-ignored',
-  organizationId: 'acme-123', // matches repo scope - allowed but ignored
-  name: 'John',
-  email: 'john@example.com',
-  _createdAt: new Date(), // ignored - repo generates its own
-});
-
-// ❌ Runtime error - scope field doesn't match repository configuration
-await repo.create({
-  name: 'John',
-  email: 'john@example.com',
-  organizationId: 'other-org', // doesn't match scope 'acme-123' - operation fails
-});
-```
+**Note 3**: Scope filtering and other consistency features are configured at repository instantiation, not in the function signatures. Where relevant, function descriptions reference their effects as part of the interface contract that every implementation must honor.
 
 ### getById
 
@@ -605,6 +513,10 @@ Returns the number of entities that match the provided filter criteria. Like `fi
 `countBySpec<S extends Specification<T>>(spec: S, options?: { onScopeBreach?: 'zero' | 'error' }): Promise<number>`
 
 Returns the number of entities that match the provided specification. Like `count`, the repository automatically applies scope filtering and soft delete exclusion. This method works with the same specification objects used by `findBySpec`, enabling consistent query logic across find and count operations. Returns 0 if no matching entities are found.
+
+---
+content below is temporary and needs restructure...
+---
 
 ## MongoDB Implementation
 
@@ -1471,3 +1383,96 @@ Why implementations for MongoDB and Firestore?
 ## Roadmap
 
 PostgreSQL
+
+
+# BACKUP SECTIONS
+
+## Configuration
+
+Key options (shared unless noted):
+
+- **Identity**
+  - `generateId?: 'server' | (() => string)` — default `'server'` (Mongo ObjectId / Firestore doc id)
+  - `idKey?: keyof T` — default `'id'`
+  - `mirrorId?: boolean` — persist public id in documents (off by default)
+- **Consistency**
+  - `softDelete?: boolean` — enable soft delete
+  - `traceTimestamps?: true | 'server' | (() => Date)` — timestamp source
+  - `timestampKeys?: { createdAt?; updatedAt?; deletedAt? }` — custom keys imply timestamping
+  - `version?: true | keyof T` — versioning field (default `_version`)
+- **Tracing**
+  - `traceKey?: keyof T` — default `_trace`
+  - `traceStrategy?: 'latest' | 'bounded' | 'unbounded'`
+    - Firestore: `'bounded'` not supported (throws)
+  - `traceLimit?: number` — required for `'bounded'`
+
+## Database Differences
+
+### MongoDB
+
+- **Soft delete**: filters on “marker does not exist”; deletes set the marker.
+- **Pagination**: cursor is `_id` (ObjectId string) and `_id` is always a tiebreaker; compound sorts supported with a cursor filter.
+- **Updates**: query-based (`updateMany`); large inputs chunked to respect driver limits.
+- **Tracing**: all strategies supported; server timestamps via `$currentDate` when configured.
+
+### Firestore
+
+- **Soft delete**: documents created with `_deleted: false`, reads filter `_deleted == false`.
+- **Pagination**: cursor is document id; sort requires `__name__` tiebreaker.
+- **Updates**: batched writes; multi-document updates chunked (`IN` limits).
+- **Tracing**: supports `'latest'` and `'unbounded'` (throws on `'bounded'`).
+- **Transactions**: reads must occur before writes; repository methods that read inside must be called in the read phase.
+
+#### Input Type Distinction
+
+Slire uses distinct input types for different operations to provide compile-time safety:
+
+- **`UpdateInput`**: Used for update operations - excludes all managed fields (system fields like timestamps/version/id, plus scope fields). This prevents accidental modification of fields that should be repository-controlled.
+- **`CreateInput`**: Used for create/upsert operations - includes all `UpdateInput` fields plus optional managed fields. The managed fields are allowed purely as a convenience feature so you don't have to manually strip them from objects. System fields (timestamps, version, id) are ignored internally and auto-generated. Scope fields are validated to match the repository's configured scope values - mismatches cause the operation to fail.
+
+The relationship: `CreateInput = UpdateInput & Partial<ManagedFields>`. This design ensures updates are strict while creation validates managed fields for correctness (scope fields must match, system fields are ignored) for developer convenience.
+
+**Example:**
+
+```typescript
+type User = {
+  id: string;
+  organizationId: string; // scope field
+  name: string;
+  email: string;
+  _createdAt?: Date;
+  _updatedAt?: Date;
+};
+
+// With scope { organizationId: 'acme-123' } and timestamps enabled:
+// UpdateInput = { name: string; email: string }
+// CreateInput = { name: string; email: string; id?: string; organizationId?: string; _createdAt?: Date; _updatedAt?: Date }
+
+// ✅ Valid update - only user data
+await repo.update(id, { set: { name: 'John' } });
+
+// ❌ Compile error - can't update managed fields (timestamps)
+await repo.update(id, { set: { _createdAt: new Date() } });
+
+// ❌ Compile error - can't update managed fields (scope)
+await repo.update(id, { set: { organizationId: 'other-org' } });
+
+// ✅ Valid create - managed fields optional
+await repo.create({ name: 'John', email: 'john@example.com' });
+
+// ✅ Valid create - matching scope field ignored, others auto-generated
+await repo.create({
+  id: 'will-be-ignored',
+  organizationId: 'acme-123', // matches repo scope - allowed but ignored
+  name: 'John',
+  email: 'john@example.com',
+  _createdAt: new Date(), // ignored - repo generates its own
+});
+
+// ❌ Runtime error - scope field doesn't match repository configuration
+await repo.create({
+  name: 'John',
+  email: 'john@example.com',
+  organizationId: 'other-org', // doesn't match scope 'acme-123' - operation fails
+});
+```
