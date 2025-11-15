@@ -326,13 +326,26 @@ await repo.update(id, {
 
 `updateMany(ids: string[], update: UpdateOperation<UpdateInput>, options?: { mergeTrace?: any }): Promise<void>`
 
-Bulk version of `update` that applies the same update operation to multiple entities identified by their IDs. All entities are subject to soft-delete exclusion by default. Timestamp updates and versioning behavior are identical to the single `update` function. The operation succeeds even if some of the provided IDs don't exist - only valid, active entities will be updated.
+Applies the same update to multiple entities by ID. Applies scope and excludes soft‑deleted documents (when enabled). Managed fields cannot be updated. Timestamps/version are applied automatically, and `options.mergeTrace` merges per‑operation trace context. Succeeds even if some IDs don’t exist or are out of scope (only active, in‑scope entities are updated).
 
-For large inputs, the operation may run in chunks to respect MongoDB limits and is not atomic across chunks. If you need all-or-nothing behavior across many IDs, wrap the call in a transaction using `runTransaction`.
+For large inputs, implementations may process updates in chunks to respect native driver/datastore limits; chunked execution is not atomic across chunks. If you need all‑or‑nothing behavior across many IDs, wrap the call in a transaction with `runTransaction`. Be mindful of transaction size limits in your datastore (e.g., max operations per transaction); very large updates may need to be split across multiple transactions — atomicity is per transaction, not across multiple transactions.
 
-This method is not all-or-nothing. Some entities may be updated, and others may fail due to unique constraints or scope rules. For atomicity across entities, wrap the call in a transaction using `runTransaction`.
+Firestore notes:
+- Uses `where(documentId(), 'in', [...])` and performs a read before writes; call inside the transaction’s read phase (before any writes).
+- Respects Firestore limits (conservative `IN` size and batch size); executes multiple batches when needed. Not atomic across batches unless your transaction covers them.
 
-Note that `upsert` and `upsertMany` are intentionally not provided to keep the API simple.
+MongoDB notes:
+- Processes IDs in chunks to respect `$in` limits; each chunk is a single `updateMany` call with repository constraints applied. Not atomic across chunks unless wrapped in a transaction.
+
+Example:
+
+```ts
+await repo.updateMany(
+  [id1, id2, id3],
+  { set: { status: 'archived' }, unset: 'dueDate' },
+  { mergeTrace: { operation: 'archive-overdue' } }
+);
+```
 
 ### delete
 
