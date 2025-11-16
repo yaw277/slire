@@ -808,8 +808,17 @@ const repo = createMongoRepo({
 ```
 
 ### version
+Maintains a monotonically increasing version field for each document. Set `version: true` to use the default `_version` field, or set `version: 'yourNumericField'` to use a custom numeric property from your entity. The repository initializes the version to `1` on create and increments it by `1` on every update and on soft delete; hard deletes remove the document and therefore do not write a new version. 
 
-Enables optimistic versioning. With `true`, the repository uses `_version`; you can also provide a custom numeric field from your entity. The version is set to `1` on create and incremented on every update and soft delete.
+The version field is repository‑managed and cannot be set, updated, or unset by user updates; any value provided on create is ignored. When `true` is used, the default `_version` field is hidden on reads; when a custom key is used, that field is returned like any other property. Custom version keys must refer to entity properties of type `number`. 
+
+MongoDB notes:
+Uses `$setOnInsert` to initialize the version to `1` on create and `$inc` to increment by `1` on update and on soft delete.
+
+Firestore notes:
+Sets the version to `1` on create and uses `FieldValue.increment(1)` to increment by `1` on update and on soft delete.
+
+Slire does not perform conditional writes based on expected version; if you need optimistic concurrency checks, implement them in your application logic (for example, read and compare before writing within a transaction).
 
 ### traceKey
 
