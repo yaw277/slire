@@ -749,15 +749,50 @@ MongoDB notes:
 
 Firestore notes:
 - New documents are created with `_deleted: false`; queries append `where('_deleted', '==', false)` to exclude deleted documents.
-- Rationale: Firestore does not support querying for “field does not exist”; a boolean marker enables server‑side filtering (and counting) without fetching documents or doing client‑side post‑processing.
+- Rationale: Firestore does not support querying for "field does not exist"; a boolean marker enables server‑side filtering (and counting) without fetching documents or doing client‑side post‑processing.
 - Delete operations set `_deleted: true`. In transactions, remember Firestore’s read‑before‑write rule for methods that perform an internal read.
 
 ### traceTimestamps
+If set, enables managed timestamps. Accepts `true | 'server' | (() => Date)`. Default is no timestamps. Settinng only [`timestampKeys`](#timestampkeys) implies `traceTimestamps: true`.
 
-Selects the timestamp source for `_createdAt`, `_updatedAt`, and `_deletedAt` when timestamping is enabled. Use `true` for application time (`new Date()`), `'server'` for server‑side timestamps, or `() => Date` for custom generation (handy in tests).
+What it does (when enabled):
+- Sets `_createdAt` and `_updatedAt` on create (both to the same timestamp)
+- Sets `_updatedAt` on every update
+- Sets `_updatedAt` and `_deletedAt` on soft delete
 
-MongoDB: `'server'` uses `$currentDate`.  
-Firestore: `'server'` uses `FieldValue.serverTimestamp()`.
+These fields are repository‑managed (readonly) when timestamping is enabled.
+
+Sources:
+- `true` (application time): uses `new Date()` on the client
+- `'server'`: uses the datastore’s server timestamp
+- `() => Date`: calls your function to produce a `Date` (useful for tests/clock control)
+
+MongoDB notes:
+- `'server'` uses `$currentDate` to populate timestamp fields using server time (from the database).
+
+Firestore notes:
+- `'server'` uses `FieldValue.serverTimestamp()`.
+- Reads always return JavaScript `Date` objects; Firestore `Timestamp`s are converted during hydration.
+
+Example (custom clock):
+```ts
+let now = new Date('2025-01-01T00:00:00Z');
+const clock = () => now;
+
+const repo = createMongoRepo({
+  collection,
+  mongoClient,
+  options: { softDelete: true, traceTimestamps: clock },
+});
+
+const id = await repo.create({ title: 'Draft' });    // _createdAt == _updatedAt == 00:00:00Z
+
+now = new Date('2025-01-01T00:00:01Z');
+await repo.update(id, { set: { title: 'Review' } }); // _updatedAt == 00:00:01Z
+
+now = new Date('2025-01-01T00:00:02Z');
+await repo.delete(id);                               // _updatedAt == _deletedAt == 00:00:02Z
+```
 
 ### timestampKeys
 
