@@ -800,7 +800,8 @@ Renames timestamp fields and accepts a partial object `{ createdAt?, updatedAt?,
 Example:
 ```ts
 const repo = createMongoRepo({
-  collection, mongoClient,
+  collection,
+  mongoClient,
   options: {
     timestampKeys: { createdAt: 'createdAt', updatedAt: 'updatedAt' },
   },
@@ -818,7 +819,35 @@ Uses `$setOnInsert` to initialize the version to `1` on create and `$inc` to inc
 Firestore notes:
 Sets the version to `1` on create and uses `FieldValue.increment(1)` to increment by `1` on update and on soft delete.
 
-Slire does not perform conditional writes based on expected version; if you need optimistic concurrency checks, implement them in your application logic (for example, read and compare before writing within a transaction).
+Slire does not perform conditional writes based on expected version. While this would work trivially with MongoDB in a single round trip, Firestore requires a transactional read before write for the check. If you need optimistic concurrency checks, implement them in your application logic (for example, read and compare before writing within a transaction).
+
+Example of an optimistic update function for MongoDB:
+```ts
+const repo = createMongoRepo({
+  collection,
+  mongoClient,
+  options: { version: true },
+});
+
+const optimisticUpdate = async (
+  id: string,
+  update: Parameters<typeof repo.update>[1],
+  options: { expectedVersion: number, mergeTrace?: any},
+) => {
+  const result = await repo.collection.updateOne(
+    repo.applyConstraints({
+      _id: new ObjectId(id),
+      _version: options.expectedVersion,
+    }),
+    repo.buildUpdateOperation(update, options.mergeTrace),
+  );
+  if (result.matchedCount === 0) {
+    throw new Error(
+      `Version conflict for ${id} (expected ${options.expectedVersion})`,
+    );
+  }
+};
+```
 
 ### traceKey
 

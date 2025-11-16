@@ -3044,6 +3044,56 @@ describe('createtMongoRepo', function () {
       const raw2 = await rawTestCollection().findOne({ _id: new ObjectId(id) });
       expect(raw2).not.toHaveProperty('_version');
     });
+
+    it('test optimistic concurrency', async () => {
+      const repo = createMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        options: { version: true },
+      });
+
+      const optimisticUpdate = async (
+        id: string,
+        update: Parameters<typeof repo.update>[1],
+        options: { expectedVersion: number, mergeTrace?: any},
+      ) => {
+        const result = await repo.collection.updateOne(
+          repo.applyConstraints({
+            _id: new ObjectId(id),
+            _version: options.expectedVersion,
+          }),
+          repo.buildUpdateOperation(update, options.mergeTrace),
+        );
+        if (result.matchedCount === 0) {
+          throw new Error(
+            `Version conflict for ${id} (expected ${options.expectedVersion})`,
+          );
+        }
+      };
+
+      const id = await repo.create(
+        createTestEntity({ name: 'Optimistic Test' }),
+      );
+      await optimisticUpdate(
+        id,
+        { set: { name: 'Updated' } },
+        { expectedVersion: 1 },
+      );
+      await expect(
+        Promise.all([
+          optimisticUpdate(
+            id,
+            { set: { name: 'Another Update A' } },
+            { expectedVersion: 2 },
+          ),
+          optimisticUpdate(
+            id,
+            { set: { name: 'Another Update B' } },
+            { expectedVersion: 2 },
+          ),
+        ]),
+      ).rejects.toThrow(`Version conflict for ${id} (expected 2)`);
+    });
   });
 
   describe('advanced operations', () => {
