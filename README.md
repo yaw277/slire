@@ -3,6 +3,7 @@
 - [Install](#install)
 - [Quickstart](#quickstart)
 - [API](#api)
+- [Configuration](#configuration)
 
 ---
 
@@ -617,12 +618,11 @@ See database‑specific notes under [count](#count).
 
 This section documents every configuration option the repository understands. For brevity, all code samples below use `createMongoRepo`; semantics are identical for Firestore unless a Firestore note says otherwise.
 
-- Scope: [scope](#scope-instantiation-parameter)
+- Scope: [scope](#scope)
 - Identity: [generateId](#generateid), [idKey](#idkey), [mirrorId](#mirrorid)
 - Consistency: [softDelete](#softdelete), [traceTimestamps](#tracetimestamps), [timestampKeys](#timestampkeys),
  [version](#version)
-- Tracing: [traceKey](#tracekey), [traceStrategy](#tracestrategy), [traceLimit](#tracelimit), [traceContext](#tracecontext-instantiation-parameter)
-
+- Tracing: [traceContext](#tracecontext), [traceStrategy](#tracestrategy), [traceLimit](#tracelimit), [traceKey](#tracekey)
 
 ### scope
 
@@ -814,10 +814,10 @@ Maintains a monotonically increasing version field for each document. Set `versi
 The version field is repository‑managed and cannot be set, updated, or unset by user updates; any value provided on create is ignored. When `true` is used, the default `_version` field is hidden on reads; when a custom key is used, that field is returned like any other property. Custom version keys must refer to entity properties of type `number`. 
 
 MongoDB notes:
-Uses `$setOnInsert` to initialize the version to `1` on create and `$inc` to increment by `1` on update and on soft delete.
+- Uses `$setOnInsert` to initialize the version to `1` on create and `$inc` to increment by `1` on update and on soft delete.
 
 Firestore notes:
-Sets the version to `1` on create and uses `FieldValue.increment(1)` to increment by `1` on update and on soft delete.
+- Sets the version to `1` on create and uses `FieldValue.increment(1)` to increment by `1` on update and on soft delete.
 
 Slire does not perform conditional writes based on expected version. While this would work trivially with MongoDB in a single round trip, Firestore requires a transactional read before write for the check. If you need optimistic concurrency checks, implement them in your application logic (for example, read and compare before writing within a transaction).
 
@@ -851,9 +851,38 @@ const optimisticUpdate = async (
 
 A MongoDB-specific helper (for example, `optimisticUpdateFilter`) is under consideration for a future version to simplify this pattern.
 
-### traceKey
+### traceContext
+Sets a base trace object that the repository writes on every write operation. The base context is merged with per‑operation context passed via `options.mergeTrace` on `create`, `createMany`, `update`, `updateMany`, and, if soft-delete is enabled, `delete` and `deleteMany`. The repository augments the trace with `_op` (the operation) and `_at` (a timestamp) automatically; `_at` follows the configured timestamp source from [traceTimestamps](#tracetimestamps) (application time, server time, or a custom clock). The shape of the context is entirely application‑defined (for example, `userId`, `requestId`, `service`).
 
-Sets the field used to store trace data written on each write (default `_trace`). The default field is hidden on reads unless you explicitly model it in the entity type.
+MongoDB notes:
+- with server timestamps enabled, the repository uses `$currentDate` for the `_trace._at` field when needed
+- for `bounded` [traceStrategy](#tracestrategy) `_trace._at` falls back to application time to avoid read-before-write
+
+Firestore notes:
+- with server timestamps enabled, the repository uses `FieldValue.serverTimestamp()` for `_trace._at`
+- the `bounded` trace strategy is not supported (see [traceStrategy](#tracestrategy))
+
+Example:
+```ts
+const repo = createMongoRepo({
+  collection,
+  mongoClient,
+  traceContext: { userId: 'user123', requestId: 'req-34' },
+  options: { traceStrategy: 'latest', traceTimestamps: 'server' },
+});
+await repo.update(id, { set: { status: 'done' } }, { mergeTrace: { action: 'complete-task' } });
+// resulting document includes:
+// {
+//   ...,
+//   _trace: {
+//     userId: 'user123',
+//     requestId: 'req-34',
+//     action: 'complete-task',
+//     _op: 'update',
+//     _at: new Date('2025-10-21T09:34:23:743Z')
+//   }
+// }
+```
 
 ### traceStrategy
 
@@ -868,19 +897,9 @@ Firestore: `bounded` is not supported and will throw at repository creation.
 
 The maximum number of trace entries to keep when `traceStrategy` is `bounded`. Ignored for other strategies.
 
-### traceContext (instantiation parameter)
+### traceKey
 
-Provides a base trace context that is merged into every write. You can extend or override it per operation via `options.mergeTrace` on `create`, `update`, and `delete`.
-
-Example:
-```ts
-const repo = createMongoRepo<Task>({
-  collection, mongoClient,
-  traceContext: { userId, requestId },
-  options: { traceStrategy: 'latest', traceTimestamps: 'server' },
-});
-await repo.update(id, { set: { status: 'done' } }, { mergeTrace: { action: 'complete-task' } });
-```
+Sets the field used to store trace data written on each write (default `_trace`). The default field is hidden on reads unless you explicitly model it in the entity type.
 
 ---
 content below is temporary and needs restructure...
