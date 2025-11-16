@@ -854,6 +854,8 @@ A MongoDB-specific helper (for example, `optimisticUpdateFilter`) is under consi
 ### traceContext
 Sets a base trace object that the repository writes on every write operation. The base context is merged with per‑operation context passed via `options.mergeTrace` on `create`, `createMany`, `update`, `updateMany`, and, if soft-delete is enabled, `delete` and `deleteMany`. The repository augments the trace with `_op` (the operation) and `_at` (a timestamp) automatically; `_at` follows the configured timestamp source from [traceTimestamps](#tracetimestamps) (application time, server time, or a custom clock). The shape of the context is entirely application‑defined (for example, `userId`, `requestId`, `service`).
 
+Saving trace data with each write provides a lightweight, always‑available audit trail. It makes it easy to answer who changed what and when, correlate changes to requests or background jobs, debug incidents with precise context, and satisfy operational/compliance needs without a separate pipeline. Because the trace is stored with the document, downstream processors (for example, change streams) can reliably enrich centralized audit logs while reads still have immediate access to the latest context.
+
 MongoDB notes:
 - with server timestamps enabled, the repository uses `$currentDate` for the `_trace._at` field when needed
 - for `bounded` [traceStrategy](#tracestrategy) `_trace._at` falls back to application time to avoid read-before-write
