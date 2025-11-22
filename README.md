@@ -632,7 +632,7 @@ MongoDB notes:
 Firestore notes:
 - Slire assumes path‑scoped collections (for example, `tenants/{tenantId}/tasks`); scope is not added to read filters because the path enforces it.
 - Pass `scope` at repository creation if you want write‑time validation; mismatches cause the operation to fail.
- 
+
 Limitation:
  - Nested scope objects are not supported; scope keys must reference top‑level primitive fields (for example, `tenantId`, not `tenant.id`). The repository enforces this at instantiation time.
 
@@ -675,6 +675,20 @@ await repo.update(taskId, {
   set: { tenantId: 'new-tenant' }, // TypeScript error + runtime error
 });
 ```
+
+Side note on data partitioning models:
+
+Slire’s repository can enforce multi‑tenancy when multiple tenants’ data live side‑by‑side in a single collection/table by using `scope` fields (for example, `tenantId`) — this applies to MongoDB, where the scope is merged into all reads/updates/deletes and validated on create. In Firestore, the implementation expects path‑scoped collections and does not add scope predicates to reads; use collection paths (and security rules) to enforce isolation and optionally pass `scope` for write‑time validation.
+
+Other multi‑tenant models (at a glance):
+
+- Database‑per‑tenant: strongest isolation, higher operational cost (provisioning, upgrades, monitoring)
+- Schema‑per‑tenant: shared server, per‑tenant schema; moderate isolation/overhead
+- Table/collection‑per‑tenant: separate table/collection per tenant; simple boundaries, can hit scaling limits at high tenant counts
+- Row‑per‑tenant (shared table with `tenantId`): most resource‑efficient; requires strict scoping/authorization (what `scope` enforces in MongoDB)
+- Path‑scoped data (Firestore): encode tenant in document path; rely on security rules and repository write‑time validation
+- Organizational isolation: separate cloud projects/accounts or regions per tenant for compliance and blast‑radius reduction
+- Policy/enforcement layers: database row/doc‑level security (RLS) or Firestore Security Rules to enforce tenant access at the data tier
 
 ### generateId
 
