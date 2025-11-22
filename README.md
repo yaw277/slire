@@ -6,15 +6,10 @@
 - [Configuration](#configuration)
 - [MongoDB Implementation](#mongodb-implementation)
 - [Firestore Implementation](#firestore-implementation)
-
----
-
-- [Recommended Usage Patterns](#recommended-usage-patterns)
-- [Limitations and Caveats](#limitations-and-caveats)
+- [Usage Patterns](#usage-patterns)
 - [FAQ](#faq)
 - [Roadmap](#roadmap)
 - [License](#license)
-- [Why Slire?](docs/WHY.md)
 
 ---
 
@@ -1200,7 +1195,7 @@ export function makeSetTaskStatus(repo: TaskRepo): SetTaskStatus {
 
 ### Decouple business logic with small functions (ports)
 
-Keep orchestration in plain functions that take an explicit “dependency bag” and a simple input object. This makes behaviour easy to test (no class state), encourages clear boundaries, and lets you stub tiny, type‑safe ports instead of wrestling with generic repository methods.
+Keep orchestration in plain functions that take an explicit "dependency bag" and a simple input object. This makes behaviour easy to test, encourages clear boundaries, and lets you stub tiny, type‑safe ports (again, instead of wrestling with generic repository methods).
 
 ```typescript
 type ProjectRepo = ReturnType<typeof createProjectRepo>;
@@ -1268,33 +1263,14 @@ export async function completeTaskFlow(
 
 ### Use helpers for direct collection operations
 
-When dropping to `repo.collection`, keep scope and managed fields consistent:
+As noted earlier — but worth repeating — when you drop to `repo.collection`, keep scope and managed fields consistent: use `applyConstraints(...)` and `buildUpdateOperation(...)` so scope, timestamps, versioning, and tracing are preserved:
 
 ```typescript
 // bulk mark tasks as processed for a tenant
+const taskRepo = createTaskRepo(mongoClient, 'tenant-42');
 const filter = taskRepo.applyConstraints({ status: 'in_progress' });
 const update = taskRepo.buildUpdateOperation({ set: { processed: true } }, { job: 'daily-rollup' });
 await taskRepo.collection.updateMany(filter, update);
-```
-
-### Sessions and transactions in practice
-
-- MongoDB: use `repo.runTransaction(async tx => { ... })` for simple single‑collection units; use `withSession(session)` to coordinate multiple repositories (e.g., Tasks + Projects) inside one transaction (see the MongoDB section for a full example).
-- Firestore: use `repo.runTransaction(async txRepo => { ... })` or `withTransaction(tx)`, and remember Firestore’s read‑before‑write rule; do all reads first, then perform writes.
-
-### Query with Specifications (composable filters)
-
-```typescript
-import { Specification, combineSpecs } from 'slire';
-
-const inProgress: Specification<Task> = { toFilter: () => ({ status: 'in_progress' }), describe: 'in-progress' };
-const assignedTo = (userId: string): Specification<Task> =>
-  ({ toFilter: () => ({ 'assigneeId': userId as any }), describe: `assignee=${userId}` });
-
-const tasks = await createTaskRepo(client, tenantId)
-  .findBySpec(combineSpecs(inProgress, assignedTo('u_123')), { orderBy: { _createdAt: 'desc' }, 
-                                                               projection: { id: true, title: true } })
-  .toArray();
 ```
 
 ### Pagination vs. streaming
@@ -1311,38 +1287,27 @@ const page1 = await createTaskRepo(client, tenantId).findPage(
 
 ### Tracing patterns (base + per‑operation)
 
-Set a base `traceContext` in your factory and extend with `mergeTrace` in business logic. See [Audit Trail Strategies with Tracing](docs/AUDIT.md) for end‑to‑end options (change streams, embedded history, etc.).
+Set a base `traceContext` when building the repository and extend with `mergeTrace` in business logic. See [Audit Trail Strategies with Tracing](docs/AUDIT.md) for end‑to‑end options (change streams, embedded history, etc.).
 
 ### Soft‑delete aware reads and admin views
 
 Normal repo queries exclude deleted documents automatically when `softDelete` is enabled. For administrative “trash” views or permanent purge flows, query the native collection directly and add your own `_deleted` predicate (and any required scope predicates), then use `buildUpdateOperation` for consistent updates.
 
-### ID strategy, `idKey`, and `mirrorId`
+### ID strategy
 
-Prefer server IDs for simplicity. Consider custom IDs for imports or external correlation. If you query by `idKey` in MongoDB and enable `mirrorId`, add an index on that field.
-
-### Error handling: partial creates
-
-`createMany` may throw `CreateManyMultipleFailure` with `insertedIds` and `failedIndices`. A simple retry pattern for failed items:
-
-```typescript
-try {
-  await taskRepo.createMany(batch);
-} catch (e) {
-  if (e.name === 'CreateManyPartialFailure') {
-    const toRetry = e.failedIndices.map((i: number) => batch[i]);
-    if (toRetry.length) await taskRepo.createMany(toRetry);
-  } else {
-    throw e;
-  }
-}
-```
+Prefer server IDs for simplicity. Consider custom IDs for imports or external correlation.
 
 ### Testing tips
 
 - Use `traceTimestamps: () => new Date('2025-01-01T00:00:00Z')` for deterministic timestamps.
-- Provide `generateId: () => \`t_${Date.now()}\`` for predictable IDs in tests.
-- For Firestore, run against the emulator; for MongoDB, use an ephemeral test instance.
+- Provide a deterministic ID generator:
+  ```ts
+  const nextTestId = (() => { let n = 0; return () => `id_${++n}` })();
+  // ... later in your repo factory for tests:
+  options: { generateId: nextTestId }
+  ```
+- For Firestore, run against the emulator ([Firebase Local Emulator Suite](https://firebase.google.com/docs/emulator-suite/connect_firestore)).
+- For MongoDB, use an ephemeral test instance (for example, [Testcontainers for Node.js – MongoDB](https://testcontainers.com/modules/mongodb/?language=nodejs)).
 
 ### Performance and indexing
 
@@ -1358,7 +1323,7 @@ remarks about other features...
 
 contribution: how can I express that this is for now a solo project?
 
-## Roadmap
+what's the roadmap? which features/implementations to expect?
 
 PostgreSQL, DocumentDB
 
