@@ -1402,4 +1402,4 @@ Small, focused PRs (bug fixes or doc improvements) are welcome; please open an i
 
 ## License
 
-todo
+MIT © 2025 Denny Christochowitz (dchowitz) — see [LICENSE](./LICENSE)
