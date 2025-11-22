@@ -910,31 +910,60 @@ content below is temporary and needs restructure...
 
 ## MongoDB Implementation
 
-The MongoDB implementation provides additional functionality beyond the core Slire interface. This includes the factory function for creating repositories, transaction support methods, and helper functions that enable direct MongoDB operations while maintaining the repository's consistency rules and scoping behavior. These MongoDB-specific features are essential for advanced use cases where the generic interface isn't sufficient, but you still want the benefits of automatic scope filtering, timestamps, and other repository features.
+ The MongoDB implementation provides a repository factory and a small set of helpers on top of the DB‑agnostic API. It covers sessions/transactions and native collection helpers for cases that require direct collection access while keeping scope, timestamps, versioning, and tracing consistent with the repository.
 
 ### createMongoRepo
 
-`createMongoRepo({ collection, mongoClient, scope?, traceContext?, options? }): MongoRepo<T, Scope, Entity>`
+`createMongoRepo({ collection, mongoClient, scope?, traceContext?, options?, session? })`
 
-Factory function that creates a MongoDB repository instance implementing the Slire interface. Takes a MongoDB collection, client, optional scope for filtering, optional trace context for audit logging, and configuration options for consistency features like timestamps, versioning, soft delete, and tracing. The function uses TypeScript generics to ensure type safety across all repository operations. The returned repository instance provides both the DB-agnostic Slire interface and additional MongoDB-specific helpers (described in the following sections) for advanced operations.
+This factory returns a repository that implements the full Slire API and Mongo‑specific helpers. It requires a MongoDB `collection` and the `mongoClient`. You may pass a `session` to bind the instance to an existing transaction; otherwise, use the helpers below to work with sessions when needed. The remaining parameters are documented in [Configuration](#configuration): see [scope](#scope), [traceContext](#tracecontext), and options ([softDelete](#softdelete), [traceTimestamps](#tracetimestamps), [timestampKeys](#timestampkeys), [version](#version), [traceStrategy](#tracestrategy), [traceLimit](#tracelimit), [traceKey](#tracekey)).
 
-**`session?: ClientSession`** - MongoDB session for transaction support. When provided, all repository operations will use this session, making them part of an existing transaction. Typically used internally by `withSession()` and `runTransaction()` methods rather than passed directly by users.
+What you get in addition to the DB‑agnostic API are direct `collection` access, `applyConstraints` for safe filters, `buildUpdateOperation` for update documents with timestamps/version/trace applied, and session/transaction helpers.
 
-### withSession
+### Sessions and transactions
 
-`withSession(session: ClientSession): MongoRepo<T, Scope, Entity>`
+`withSession(session: ClientSession)` creates a session‑bound repository that participates in the given transaction for all subsequent operations. The returned instance preserves scope, timestamps, versioning, and trace settings. Calling it on an already session‑bound repo replaces the session; MongoDB does not support nested transactions. Use this to coordinate a single MongoDB session across multiple repositories operating on different collections.
 
-Creates a new repository instance that uses the provided MongoDB session for all operations. The returned repository has identical functionality to the original repository but ensures all database operations participate in the session's transaction context. This method is essential for multi-operation transactions where you need consistency across multiple repository calls. The session-aware repository maintains all configured options (scope, timestamps, versioning, etc.) from the original repository.
+Example (multiple repositories in one transaction):
+```ts
+const taskRepo = createMongoRepo({
+  collection: client.db('app').collection<Task>('tasks'),
+  mongoClient: client,
+  scope: { tenantId },
+});
+const projectRepo = createMongoRepo({
+  collection: client.db('app').collection<Project>('projects'),
+  mongoClient: client,
+  scope: { tenantId },
+});
 
-Calling this method on a repository instance that already has a session will simply replace the existing session with the new one, as MongoDB does not support nested transactions. This means you can safely call `withSession` multiple times to switch between different transaction contexts (though this should be an edge case anyway as you could always call `withSession` from the base repository).
+await client.withSession(async (session) => {
+  await session.withTransaction(async () => {
+    const tasks = taskRepo.withSession(session);
+    const projects = projectRepo.withSession(session);
 
-### runTransaction
+    const task = await tasks.getById(taskId);
+    if (!task) throw new Error('Task not found');
 
-`runTransaction<R>(operation: (txRepo: Repo<T, Scope, Entity>) => Promise<R>): Promise<R>`
+    // Mark task done and update its project's progress in the same transaction
+    await tasks.update(
+      taskId,
+      { set: { status: 'done' } },
+      { mergeTrace: { action: 'complete-task' } }
+    );
 
-Convenience method that executes a function within a MongoDB transaction. Creates a new session, starts a transaction, and provides a session-aware repository instance to the operation function. The transaction is automatically committed if the operation succeeds or rolled back if an error is thrown. This is the recommended approach for most transaction scenarios as it handles all the session management automatically. The operation function receives a repository instance that maintains all the same configuration (scope, timestamps, etc.) as the original repository but operates within the transaction context.
+    await projects.update(
+      projectId,
+      { set: { progress: 'in_progress' } },
+      { mergeTrace: { reason: 'task-completed', taskId } }
+    );
+  });
+});
+```
 
-This method is best suited for simple scenarios where the provided transaction-aware repository sufficiently covers all required functionality. The transaction is naturally limited to operations on the collection the repository operates on - for cross-collection transactions or mixing repository operations with direct MongoDB operations, use `withSession` instead.
+`runTransaction(callback)` is a convenience wrapper that creates a session, starts a transaction, gives you a session‑aware repo inside the callback, and commits or rolls back automatically. Use it when a single‑collection transaction via the repository API is sufficient; use `withSession` if you need to mix repository calls with native driver operations within the same transaction.
+
+Large inputs are chunked internally by repo methods to respect driver limits. When you drop down to the native collection, prefer the helpers below to preserve scope and managed fields, and wrap multi‑step read/modify/write sequences in a transaction to avoid races.
 
 ### collection
 
@@ -1009,6 +1038,10 @@ await repo.collection.updateOne(
 You can still leverage `repo.applyConstraints` for scope/soft-delete filtering and `repo.buildUpdateOperation` for timestamp/version logic in merge-style scenarios. For replace-like behavior with server timestamps, prefer `updateOne` with update modifiers provided by `buildUpdateOperation` (as shown) rather than `replaceOne` as it doesn't support server timestamps.
 
 Note: The replace-like pattern performs a pre-read to compute unset keys. To avoid race conditions and achieve all-or-nothing behavior, wrap this sequence in a transaction using `runTransaction`.
+
+### Notes
+
+When using the native collection directly, remember that the public `idKey` maps to `_id` and may be an `ObjectId` when `generateId: 'server'` is used; convert string ids accordingly. The repository ensures stable ordering by appending `_id` as a tiebreaker where needed; mirror this pattern in custom queries if you depend on deterministic ordering.
 
 ## Firestore Implementation
 
@@ -1622,7 +1655,7 @@ contribution: how can I express that this is for now a solo project?
 
 ## Roadmap
 
-PostgreSQL
+PostgreSQL, DocumentDB
 
 better merge into FAQ?
 
