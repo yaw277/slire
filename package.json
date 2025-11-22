@@ -35,15 +35,31 @@
     "lodash": "^4.17.21"
   },
   "keywords": [
-    "firestore",
     "mongodb",
+    "firestore",
+    "firebase",
     "repository",
+    "repository-pattern",
     "data-access",
     "typescript",
-    "node",
-    "stream"
+    "nodejs",
+    "crud",
+    "projection",
+    "pagination",
+    "cursor-pagination",
+    "soft-delete",
+    "timestamps",
+    "versioning",
+    "tracing",
+    "audit",
+    "transactions",
+    "multi-tenant",
+    "minimal-abstraction"
   ],
   "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
   "publishConfig": {
     "access": "public"
   },
