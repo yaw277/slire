@@ -5,6 +5,7 @@
 - [API](#api)
 - [Configuration](#configuration)
 - [MongoDB Implementation](#mongodb-implementation)
+- [Firestore Implementation](#firestore-implementation)
 
 ---
 
@@ -1042,71 +1043,89 @@ When using the native collection directly, remember that the public `idKey` maps
 
 ## Firestore Implementation
 
-The Firestore implementation follows a more opinionated approach to play to Firestore’s strengths and avoid costly client-side work and index sprawl.
+The Firestore implementation provides a repository factory and a small set of helpers on top of the DB‑agnostic API. It focuses on transaction‑aware repositories and native collection helpers that respect Firestore’s path‑scoped model and server‑side filtering for soft deletes.
 
-### Design assumptions
+### createFirestoreRepo
 
-- Path‑scoped collections (recommended): Model multi‑tenancy/scope hierarchically in the document path, e.g. `organizations/{orgId}/users`. Instantiate the repository with the already scoped `collection`. Passing a `scope` is optional and is used for write‑time validation only (and to mark scope fields as readonly for updates). Reads never add scope filters – the path enforces scope. If you use a non‑scoped collection, reads will include any matching documents regardless of scope.
-- Soft delete uses a boolean flag: Documents are created with `_deleted: false`. Soft deletes set `_deleted: true`. Reads/counts filter by `_deleted == false`.
-- Identity: `id` maps to `doc.id` (string). The `idKey`/`mirrorId` options behave as in the Mongo section (id exposed via `idKey`, optionally mirrored in the document).
+`createFirestoreRepo({ collection, firestore, scope?, traceContext?, options?, transaction? })`
 
-These assumptions reduce composite index requirements (no scope fields in filters) and eliminate most client‑side filtering.
+This factory returns a repository that implements the full Slire API and Firestore‑specific helpers. It requires a Firestore `collection` (a `CollectionReference<T>`) and the `firestore` client. You may pass a `transaction` to bind the instance to an existing Firestore transaction; otherwise, use the helpers below to work with transactions when needed. The remaining parameters are documented in [Configuration](#configuration): see [scope](#scope), [traceContext](#tracecontext), and options ([softDelete](#softdelete), [traceTimestamps](#tracetimestamps), [timestampKeys](#timestampkeys), [version](#version), [traceStrategy](#tracestrategy), [traceLimit](#tracelimit), [traceKey](#tracekey)).
 
-### Repository instantiation (scoped collection)
+What you get in addition to the DB‑agnostic API are direct `collection` access, `applyConstraints` to add server‑side soft‑delete filtering to queries, `buildUpdateOperation` to generate Firestore update maps with timestamps/version/trace applied, and transaction helpers.
 
+### Transactions
+
+`withTransaction(tx: Transaction)` creates a transaction‑bound repository; all reads and writes happen through the provided `tx`. Firestore requires that all reads in a transaction occur before any writes. Repository methods like `update`, `updateMany`, and soft‑`delete` perform an internal read to select active documents (`_deleted == false`), so call them during the transaction’s read phase and perform your writes after the reads have completed.
+
+`runTransaction(callback)` is a convenience wrapper that starts a Firestore transaction, provides a transaction‑bound repo to the callback, and commits or rolls back automatically. Use it when a single‑collection transaction via the repository API is sufficient; use `withTransaction` if you need to coordinate multiple repositories in the same transaction.
+
+Example (read first, then write within one transaction):
 ```ts
-function createUserRepo(db: Firestore, orgId: string) {
-  return createFirestoreRepo<User>({
-    collection: db.collection(`organizations/${orgId}/users`) as any,
-    firestore: db,
-    scope: { organizationId: orgId }, // optional; validated on writes only (not applied to reads)
-    options: { softDelete: true }, // writes _deleted: false and filters on _deleted == false
-  });
-}
+// Assume Task and Project as defined above
+await firestore.runTransaction(async (tx) => {
+  const txTasks = taskRepo.withTransaction(tx);
+  const txProjects = projectRepo.withTransaction(tx);
+
+  // Read phase: collect necessary docs using transaction-backed methods
+  const [tasks] = await txTasks.getByIds([taskId], { id: true });
+  if (tasks.length === 0) throw new Error('Task not found');
+
+  // Write phase: repository update methods will use the same transaction
+  await txTasks.update(taskId, { set: { status: 'in_progress' } });
+  await txProjects.update(projectId, { set: { progress: 'in_progress' } });
+});
 ```
 
-### Operation semantics
+### collection
 
-- getById / getByIds
+`collection: CollectionReference<T>`
 
-  - Access documents by path (no scope filters at read time, regardless of configured `scope`). If soft delete is enabled and the document has `_deleted: true`, return `null` / exclude from results.
+This property gives direct access to the underlying Firestore collection and allows you to run native queries, batch writes, and transaction operations not covered by the Slire interface. When using the collection directly, prefer `applyConstraints` for queries that should exclude soft‑deleted documents and reuse `buildUpdateOperation` to ensure timestamps, versioning, and tracing are applied consistently.
 
-- create / createMany
+### applyConstraints
 
-  - Insert documents with `_deleted: false` when soft delete is enabled; apply timestamps/version/trace as configured.
+`applyConstraints(query: Query): Query`
 
-- update / updateMany
+Adds the repository’s server‑side soft‑delete filter to a query. Firestore repositories do not add scope filters to reads because path‑scoped collections are expected; `scope` is validated at write time. Use this helper to append the `where('_deleted', '==', false)` predicate when `softDelete` is enabled.
 
-  - Only update active documents (`_deleted: false`). Use batched writes; for multi‑document updates that must be atomic, provide a transaction handle.
+Example:
+```ts
+const q = repo.applyConstraints(
+  repo.collection.where('status', '==', 'in_progress')
+);
+const snap = await q.get();
+```
 
-- delete / deleteMany
+### buildUpdateOperation
 
-  - With soft delete: set `_deleted: true` (and timestamp/version/trace). Without soft delete: physically delete.
+`buildUpdateOperation(update: UpdateOperation<UpdateInput>, mergeTrace?: any): Record<string, any>`
 
-- find / findBySpec
+Builds a Firestore update map from `set`/`unset` instructions and automatically injects timestamps, version increments, and trace context (including `_op`/`_at`) according to your configuration. Pass the returned object to `transaction.update`, `batch.update`, or `docRef.update`.
 
-  - Build queries from the caller’s filter (no scope filters, even if a `scope` was configured). When soft delete is enabled, add a server‑side `where('_deleted', '==', false)` to exclude soft‑deleted documents.
+Example:
+```ts
+const update = repo.buildUpdateOperation(
+  { set: { status: 'done' }, unset: 'draft.notes' },
+  { action: 'complete-task' }
+);
+await repo.collection.doc(taskId).update(update);
+```
 
-- count / countBySpec
-  - Use Firestore’s count aggregation on the same filter as `find`, including `_deleted == false` when soft delete is enabled (no need to fetch documents). As with reads, `scope` is not applied at count time.
+### When you need upsert (merge pattern)
 
-### Indexing notes
+The DB‑agnostic API does not include upsert. In Firestore, you can emulate merge‑style upsert using `set(..., { merge: true })` while still leveraging repository helpers to apply timestamps, versioning, and trace context. Build the update map and pass it to `set` with `merge: true`; `FieldValue.*` operations produced by the helper are preserved by Firestore.
 
-- With path‑scoped collections, most compound filters will not include scope fields, greatly reducing the number of composite indexes you need.
+```ts
+const upsertData = repo.buildUpdateOperation(
+  { set: { status: 'in_review', reviewerId } },
+  { reason: 'auto-assign' }
+);
+await repo.collection.doc(taskId).set(upsertData, { merge: true });
+```
 
-### Differences vs. MongoDB
+### Notes
 
-- Multi‑document updates are batched (not query‑based); wrap in a transaction for atomicity.
-- Document ids are strings (`doc.id`), and query capabilities differ (no “field‑does‑not‑exist”). The `_deleted` boolean pattern enables server‑side filtering instead of client‑side post‑processing.
-
-### Transactions (Firestore specifics)
-
-- reads must happen before writes: Firestore requires a transaction to execute all reads before any writes. Avoid read‑after‑write in the same transaction callback
-- internal reads: some repository methods perform an internal read (e.g., `updateMany` selects docs to update inside the transaction). Use them only after your explicit read phase, not after writes
-- recommended patterns:
-  - prepare data outside the transaction when possible; do only writes inside the transaction
-  - or inside the transaction: perform a single read phase first (collect ids, verify state), then perform writes; do not add more reads afterwards
-- write limits: Firestore enforces limits per transaction/batch (SDKs commonly cap to 500 writes; this repo uses conservative constants like `FIRESTORE_MAX_WRITES_PER_BATCH = 300` and `FIRESTORE_IN_LIMIT = 10`). Large operations are chunked accordingly
+Path‑scoped collections are recommended (for example, `tenants/{tenantId}/tasks`); `idKey` maps to `doc.id`, and `mirrorId` stores it as a field if enabled. Soft delete uses a boolean `_deleted` field to enable server‑side filtering and counting. Queries that combine filters and sorting may require composite indexes; Firestore will throw an error with a link to create the required index when missing. The `bounded` trace strategy is not supported in Firestore; use `latest` or `unbounded` instead (see [traceStrategy](#tracestrategy)).
 
 ## Recommended Usage Patterns
 
