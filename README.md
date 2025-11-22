@@ -1329,15 +1329,15 @@ The goal is less boilerplate, fewer foot‑guns, and a consistent, type‑safe C
 ### When to use Slire?
 
 Use it when you want:
-  - Consistent scope enforcement (multi‑tenancy/partitioning) across reads/updates/deletes
-  - Managed fields handled correctly every time (timestamps/version/trace, soft delete)
-  - Type‑safe CRUD with projections and cursor‑based pagination
-  - Minimal ceremony with the ability to drop to the native driver at any time
+- Consistent scope enforcement (multi‑tenancy/partitioning) across reads/updates/deletes
+- Managed fields handled correctly every time (timestamps/version/trace, soft delete)
+- Type‑safe CRUD with projections and cursor‑based pagination
+- Minimal ceremony with the ability to drop to the native driver at any time
 
 Consider something else if you need:
-  - Rich query DSLs, joins, ORMs/ODMs with identity maps/lazy loading
-  - Schema migration tooling or declarative schema management
-  - Rich model lifecycle hooks, cascading writes, or implicit data‑layer business logic (typical ORM features). Slire keeps business logic in services; repositories are intentionally thin.
+- Rich query DSLs, joins, ORMs/ODMs with identity maps/lazy loading
+- Schema migration tooling or declarative schema management
+- Rich model lifecycle hooks, cascading writes, or implicit data‑layer business logic (typical ORM features). Slire keeps business logic in services; repositories are intentionally thin.
 
 ### Is Slire production-ready?
 
@@ -1383,15 +1383,16 @@ Supporting both validates that Slire’s abstraction stays minimal and honest ab
 
 ### How to add a new backend?
 
-- Implement a factory `createXRepo` that returns the `Repo<T,...>` plus optional backend‑specific helpers:
-  - Identity: honor `generateId`, `idKey`, `mirrorId`
-  - Scope: either merge into reads/writes (like MongoDB) or validate on writes only (like Firestore with path scoping)
-  - Soft delete: define the server‑side filter and write behavior
-  - Managed fields: map timestamps/version and trace strategies to native update primitives
-  - Queries: exact‑equality filters only; implement `find`, `findPage` (stable tiebreaker), `count`
-  - Batching/limits: chunk large inputs to native limits, define cursor formats, validate cursors
-  - Transactions: provide `withTransaction`/`runTransaction` wrappers that respect backend rules
-- Start by studying `src/mongo-repo.ts` and `src/firestore-repo.ts`; mirror their structure and reuse `repo-config` to enforce invariants.
+Implement a factory `createXRepo` that returns the `Repo<T,...>` plus optional backend‑specific helpers:
+- Identity: honor `generateId`, `idKey`, `mirrorId`
+- Scope: either merge into reads/writes (like MongoDB) or validate on writes only (like Firestore with path scoping)
+- Soft delete: define the server‑side filter and write behavior
+- Managed fields: map timestamps/version and trace strategies to native update primitives
+- Queries: exact‑equality filters only; implement `find`, `findPage` (stable tiebreaker), `count`
+- Batching/limits: chunk large inputs to native limits, define cursor formats, validate cursors
+- Transactions: provide `withTransaction`/`runTransaction` wrappers that respect backend rules
+
+Start by studying `src/mongo-repo.ts` (consider it the reference implementation) and `src/firestore-repo.ts`; mirror their structure and reuse `repo-config` to enforce invariants.
 
 ### Can I contribute?
 
