@@ -1198,28 +1198,72 @@ export function makeSetTaskStatus(repo: TaskRepo): SetTaskStatus {
 // const setTaskStatus: SetTaskStatus = async () => {};
 ```
 
-### Decouple business logic with small “services”
+### Decouple business logic with small functions (ports)
+
+Keep orchestration in plain functions that take an explicit “dependency bag” and a simple input object. This makes behaviour easy to test (no class state), encourages clear boundaries, and lets you stub tiny, type‑safe ports instead of wrestling with generic repository methods.
 
 ```typescript
 type ProjectRepo = ReturnType<typeof createProjectRepo>;
 
-// Define a port for project updates as well
+// Additional ports for projects and side‑effects
+type GetProjectStatus = (id: string) => Promise<Project['progress'] | undefined>;
 type SetProjectProgress = (id: string, progress: Project['progress']) => Promise<void>;
-const makeSetProjectProgress = (repo: ProjectRepo): SetProjectProgress =>
+type PublishDomainEvent = (e: { type: 'TaskCompleted'; taskId: string; projectId: string; at: Date; userId: string }) => Promise<void>;
+
+// Adapters (repo → ports)
+export const makeGetProjectStatus = (repo: ProjectRepo): GetProjectStatus =>
+  async (id) => (await repo.getById(id, { id: true, progress: true }))?.progress;
+export const makeSetProjectProgress = (repo: ProjectRepo): SetProjectProgress =>
   (id, progress) => repo.update(id, { set: { progress } });
 
-class TaskService {
-  constructor(private readonly getTaskSummary: GetTaskSummary,
-              private readonly setTaskStatus: SetTaskStatus,
-              private readonly setProjectProgress: SetProjectProgress) {}
+// Orchestrator function: complete a task and advance its project if needed
+type CompleteTaskInput = { taskId: string; projectId: string; userId: string };
+type CompleteTaskDeps = {
+  getTaskSummary: GetTaskSummary;
+  setTaskStatus: SetTaskStatus;
+  getProjectStatus: GetProjectStatus;
+  setProjectProgress: SetProjectProgress;
+  publishEvent: PublishDomainEvent;
+  now: () => Date;
+};
+type CompleteTaskResult = { task: TaskSummary; projectProgressChanged: boolean };
 
-  async completeAndAdvanceProject(taskId: string, projectId: string) {
-    const t = await this.getTaskSummary(taskId);
-    if (!t) throw new Error('Task not found');
-    await this.setTaskStatus(taskId, 'done');
-    await this.setProjectProgress(projectId, 'in_progress');
+export async function completeTaskFlow(
+  deps: CompleteTaskDeps,
+  input: CompleteTaskInput
+): Promise<CompleteTaskResult> {
+  const { getTaskSummary, setTaskStatus, getProjectStatus, setProjectProgress, publishEvent, now } = deps;
+
+  // 1) Load and validate
+  const task = await getTaskSummary(input.taskId);
+  if (!task) throw new Error('Task not found');
+
+  // Idempotency: if already done, no further writes
+  if (task.status === 'done') {
+    return { task, projectProgressChanged: false };
   }
+
+  // 2) Orchestrate multiple steps
+  await setTaskStatus(input.taskId, 'done');
+
+  let projectProgressChanged = false;
+  const projectStatus = await getProjectStatus(input.projectId);
+  if (!projectStatus) throw new Error('Project not found');
+  if (projectStatus === 'planned') {
+    await setProjectProgress(input.projectId, 'in_progress');
+    projectProgressChanged = true;
+  }
+
+  // 3) Emit a domain event (for async consumers / audit)
+  await publishEvent({ type: 'TaskCompleted', taskId: input.taskId, projectId: input.projectId, userId: input.userId, at: now() });
+
+  // 4) Return a concise result
+  const updated = await getTaskSummary(input.taskId);
+  return { task: updated!, projectProgressChanged };
 }
+
+// Unit tests can supply tiny stubs for each port, e.g.:
+// const deps: CompleteTaskDeps = { getTaskSummary: async (...) => ..., setTaskStatus: async (...) => {}, ... }
 ```
 
 ### Use helpers for direct collection operations
