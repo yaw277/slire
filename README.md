@@ -1133,132 +1133,180 @@ await repo.collection.doc(taskId).set(upsertData, { merge: true });
 
 Path‑scoped collections are recommended (for example, `tenants/{tenantId}/tasks`); `idKey` maps to `doc.id`, and `mirrorId` stores it as a field if enabled. Soft delete uses a boolean `_deleted` field to enable server‑side filtering and counting. Queries that combine filters and sorting may require composite indexes; Firestore will throw an error with a link to create the required index when missing. The `bounded` trace strategy is not supported in Firestore; use `latest` or `unbounded` instead (see [traceStrategy](#tracestrategy)).
 
-## Recommended Usage Patterns
+## Usage Patterns
 
-Follow the recommendations in this section to maintain consistency and keep the code organized. Most of them apply to the current MongoDB implementation.
+A short, practical guidance for using Slire repositories effectively. For deeper architectural patterns, see the [Design Guide](docs/DESIGN.md) and the [Audit Guide](docs/AUDIT.md).
 
-!!TODO - link to article (part 2 of this doc) for more detailed architectural guidance
+Note: the examples in this section use MongoDB repositories for brevity; the same patterns apply to other Slire implementations (for example, Firestore) with their respective helpers and transaction semantics.
 
-### Repository Factories
+### Repository factories
 
-Prefer creating dedicated factory functions over direct `createMongoRepo` calls to encapsulate configuration:
+Centralize `scope`, `traceContext`, and `options`, and keep collection wiring in one place.
 
 ```typescript
-// ✅ GOOD - encapsulated factory
-export function createExpenseRepo(client: MongoClient, orgId: string) {
-  return createMongoRepo({
-    collection: client.db('expenseDb').collection<Expense>('expenses'),
+import { MongoClient } from 'mongodb';
+import { createMongoRepo } from 'slire';
+
+export function createTaskRepo(client: MongoClient, tenantId: string, traceContext?: any) {
+  return createMongoRepo<Task>({
+    collection: client.db('app').collection<Task>('tasks'),
     mongoClient: client,
-    scope: { organizationId: orgId },
-    options: {
-      generateId: generateExpenseId,
-      timestampKeys: {
-        createdAt: 'createdAt'
-        updatedAt: 'updatedAt'
-      },
-      version: true
-    }
+    scope: { tenantId },
+    traceContext,
+    options: { softDelete: true, traceTimestamps: 'server', version: true },
   });
 }
 
-// ❌ ACCEPTABLE but less maintainable - direct usage everywhere
-const repo = createMongoRepo({ ... });
-```
-
-Repository factories are also ideal for enforcing trace context to ensure gapless audit history:
-
-```typescript
-// factory that enforces trace context for audit compliance
-export function createExpenseRepo(
-  client: MongoClient,
-  orgId: string,
-  traceContext: { userId: string; requestId: string; service: string }
-) {
-  return createMongoRepo({
-    collection: client.db('expenseDb').collection<Expense>('expenses'),
+export function createProjectRepo(client: MongoClient, tenantId: string, traceContext?: any) {
+  return createMongoRepo<Project>({
+    collection: client.db('app').collection<Project>('projects'),
     mongoClient: client,
-    scope: { organizationId: orgId },
-    traceContext, // Always required - no repository without audit context
-    options: {
-      generateId: generateExpenseId,
-      timestampKeys: { createdAt: 'createdAt', updatedAt: 'updatedAt' },
-      version: true,
-      traceStrategy: 'latest', // Configure for change stream processing
-    },
+    scope: { tenantId },
+    traceContext,
   });
 }
-
-// Usage - trace context is mandatory, preventing accidental gaps
-const repo = createExpenseRepo(client, orgId, {
-  userId: 'john.doe',
-  requestId: req.id,
-  service: 'expense-api',
-});
 ```
 
-This pattern ensures every operation is automatically traced, making audit log gaps impossible through design rather than discipline.
+If you require audit context for all writes, make it mandatory in the factory.
 
-### Export Repository Types
+### Testability: inject narrow ports, not repositories
 
-Alongside your repository factories, always export a corresponding type that captures the exact return type:
+Repository methods are powerful but for the sake of better DX heavily generic (projections, update types, etc.). This makes them awkward to mock in unit tests (in a type-safe manner). Prefer defining small, task‑focused "ports" (plain functions with simple types) and provide thin adapters from your repository to those ports; production code stays type‑safe, while tests stub tiny functions without wrestling with generics.
 
 ```typescript
-// expense-repo.ts
+// Export repository types for adapter construction:
+export type TaskRepo = ReturnType<typeof createTaskRepo>;
 
-// ✅ GOOD - export both factory and type
-export function createExpenseRepo(client: MongoClient, orgId: string) {
-  return createMongoRepo({ ... });
+// Define fixed projections once and derive safe view types
+const TaskSummaryProjection = { id: true, title: true, status: true } as const;
+type TaskSummary = Projected<Task, typeof TaskSummaryProjection>;
+
+// Define narrow "ports" that your services depend on
+export type GetTaskSummary = (id: string) => Promise<TaskSummary | undefined>;
+export type SetTaskStatus = (id: string, status: Task['status']) => Promise<void>;
+
+// Provide small adapters from repo → ports (production wiring)
+export function makeGetTaskSummary(repo: TaskRepo): GetTaskSummary {
+  return (id) => repo.getById(id, TaskSummaryProjection);
+}
+export function makeSetTaskStatus(repo: TaskRepo): SetTaskStatus {
+  return (id, status) => repo.update(id, { set: { status } });
 }
 
-export type ExpenseRepo = ReturnType<typeof createExpenseRepo>;
-
-// business-logic.ts
-
-// ❌ BAD - manual generic parameters, can get out of sync & tight coupling
-function processExpenses(deps: { repo: Repo<Expense, any, any> }, params: { ... }) {
-  // ...
-}
-
-// ❌ BAD - while guaranteed to match exact repo type, it leads to tight coupling (full repo injected)
-function processExpenses(deps: { repo: ExpenseRepo }, params: { ... }) {
-  // ...
-}
-
-// ✅ GOOD - explicit, properly typed dependencies (see decoupling section below)
-function processExpenses(deps: { getById: ExpenseRepo['getById'], update: ExpenseRepo['update'] }, params: { ... }) {
-  // ...
-}
+// In unit tests, stub ports with simple functions (no generics to juggle)
+// const getTaskSummary: GetTaskSummary = async (id) => ({ id, title: 'T', status: 'todo' });
+// const setTaskStatus: SetTaskStatus = async () => {};
 ```
 
-Reasons to derive repository types from factory functions:
-
-- Captures the precise generic parameters from your factory configuration
-- Type automatically updates when you modify the factory function
-- Avoid manually reconstructing `Repo<Expense, { organizationId: string }, ExpenseEntity>`
-- Single source of thruth: Factory function defines both implementation and type
-
-### Always Use Helper Methods for Direct Collection Operations
-
-When performing operations directly on `repo.collection`, always use the provided helper methods to maintain repository behavior:
+### Decouple business logic with small “services”
 
 ```typescript
-// ✅ GOOD - uses helper methods (excludes soft-deleted)
-await repo.collection.updateMany(
-  repo.applyConstraints({ status: 'active' }),
-  repo.buildUpdateOperation({ set: { processed: true } })
-);
+type ProjectRepo = ReturnType<typeof createProjectRepo>;
 
-// ❌ BAD - bypasses repository consistency
-await repo.collection.updateMany(
-  { status: 'active' },
-  { $set: { processed: true } }
+// Define a port for project updates as well
+type SetProjectProgress = (id: string, progress: Project['progress']) => Promise<void>;
+const makeSetProjectProgress = (repo: ProjectRepo): SetProjectProgress =>
+  (id, progress) => repo.update(id, { set: { progress } });
+
+class TaskService {
+  constructor(private readonly getTaskSummary: GetTaskSummary,
+              private readonly setTaskStatus: SetTaskStatus,
+              private readonly setProjectProgress: SetProjectProgress) {}
+
+  async completeAndAdvanceProject(taskId: string, projectId: string) {
+    const t = await this.getTaskSummary(taskId);
+    if (!t) throw new Error('Task not found');
+    await this.setTaskStatus(taskId, 'done');
+    await this.setProjectProgress(projectId, 'in_progress');
+  }
+}
+```
+
+### Use helpers for direct collection operations
+
+When dropping to `repo.collection`, keep scope and managed fields consistent:
+
+```typescript
+// bulk mark tasks as processed for a tenant
+const filter = taskRepo.applyConstraints({ status: 'in_progress' });
+const update = taskRepo.buildUpdateOperation({ set: { processed: true } }, { job: 'daily-rollup' });
+await taskRepo.collection.updateMany(filter, update);
+```
+
+### Sessions and transactions in practice
+
+- MongoDB: use `repo.runTransaction(async tx => { ... })` for simple single‑collection units; use `withSession(session)` to coordinate multiple repositories (e.g., Tasks + Projects) inside one transaction (see the MongoDB section for a full example).
+- Firestore: use `repo.runTransaction(async txRepo => { ... })` or `withTransaction(tx)`, and remember Firestore’s read‑before‑write rule; do all reads first, then perform writes.
+
+### Query with Specifications (composable filters)
+
+```typescript
+import { Specification, combineSpecs } from 'slire';
+
+const inProgress: Specification<Task> = { toFilter: () => ({ status: 'in_progress' }), describe: 'in-progress' };
+const assignedTo = (userId: string): Specification<Task> =>
+  ({ toFilter: () => ({ 'assigneeId': userId as any }), describe: `assignee=${userId}` });
+
+const tasks = await createTaskRepo(client, tenantId)
+  .findBySpec(combineSpecs(inProgress, assignedTo('u_123')), { orderBy: { _createdAt: 'desc' }, 
+                                                               projection: { id: true, title: true } })
+  .toArray();
+```
+
+### Pagination vs. streaming
+
+- Use `findPage` for UI/API pagination with stable cursors.
+- Use `find(...).paged(size)` or `take`/`skip` for streaming and batch processing.
+
+```typescript
+const page1 = await createTaskRepo(client, tenantId).findPage(
+  { status: 'in_progress' },
+  { limit: 20, orderBy: { _createdAt: 'desc' }, projection: { id: true, title: true } }
 );
 ```
 
+### Tracing patterns (base + per‑operation)
 
+Set a base `traceContext` in your factory and extend with `mergeTrace` in business logic. See [Audit Trail Strategies with Tracing](docs/AUDIT.md) for end‑to‑end options (change streams, embedded history, etc.).
 
+### Soft‑delete aware reads and admin views
+
+Normal repo queries exclude deleted documents automatically when `softDelete` is enabled. For administrative “trash” views or permanent purge flows, query the native collection directly and add your own `_deleted` predicate (and any required scope predicates), then use `buildUpdateOperation` for consistent updates.
+
+### ID strategy, `idKey`, and `mirrorId`
+
+Prefer server IDs for simplicity. Consider custom IDs for imports or external correlation. If you query by `idKey` in MongoDB and enable `mirrorId`, add an index on that field.
+
+### Error handling: partial creates
+
+`createMany` may throw `CreateManyMultipleFailure` with `insertedIds` and `failedIndices`. A simple retry pattern for failed items:
+
+```typescript
+try {
+  await taskRepo.createMany(batch);
+} catch (e) {
+  if (e.name === 'CreateManyPartialFailure') {
+    const toRetry = e.failedIndices.map((i: number) => batch[i]);
+    if (toRetry.length) await taskRepo.createMany(toRetry);
+  } else {
+    throw e;
+  }
+}
+```
+
+### Testing tips
+
+- Use `traceTimestamps: () => new Date('2025-01-01T00:00:00Z')` for deterministic timestamps.
+- Provide `generateId: () => \`t_${Date.now()}\`` for predictable IDs in tests.
+- For Firestore, run against the emulator; for MongoDB, use an ephemeral test instance.
+
+### Performance and indexing
+
+Follow the database‑specific notes above: index equality filters and sort keys; use `_id`/`__name__` as a stable tiebreaker; create composite indexes for Firestore queries that combine filters and ordering.
 
 ## FAQ
+
+The name, where does it come from? slim repo -> slire, pronounce it like
 
 Why implementations for MongoDB and Firestore?
 
