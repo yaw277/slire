@@ -35,6 +35,8 @@ pnpm add slire
 yarn add slire
 ```
 
+Slire is native‑driver first. The database drivers are peer dependencies — install the ones you use, and Slire will work with your installed versions (within supported ranges)`.
+
 ## Quickstart
 
 Slire implements the repository pattern: a collection‑like interface for accessing and manipulating domain objects. Each repository is bound to a specific database collection.
