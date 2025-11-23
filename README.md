@@ -199,9 +199,6 @@ This keeps database and collection details encapsulated by your factory while le
   - [find](#find), [findBySpec](#findbyspec)
   - [findPage](#findpage), [findPageBySpec](#findpagebyspec)
   - [count](#count), [countBySpec](#countbyspec)
-- Transactions and helpers are implementation specific
-  - [MongoDB Implementation](#mongodb-implementation)
-  - [Firestore Implementation](#firestore-implementation)
 
 The operations below comprise the full set of repository functions in Slire. The interface is database‑agnostic; where an implementation exhibits different performance characteristics or constraints, those differences are called out where relevant.
 
@@ -210,6 +207,10 @@ The operations below comprise the full set of repository functions in Slire. The
 **Note 2**: All read functions support projections, specified as `{ propA: true, propB: true }` where keys are valid properties of `T`. The return type reflects the projection.
 
 **Note 3**: Scope filtering and other consistency features are configured at repository instantiation, not in the function signatures. Where relevant, function descriptions reference their effects as part of the interface contract that every implementation must honor.
+
+**Note 4**: Transactions and native‑driver helpers are implementation‑specific. See:
+  - [MongoDB Implementation](#mongodb-implementation)
+  - [Firestore Implementation](#firestore-implementation)
 
 ### getById
 
