@@ -1,0 +1,3 @@
+settings:
+  # Only install versions at least 3 days old (in minutes, 4320 = 1440*3)
+  minimumReleaseAge: 4320

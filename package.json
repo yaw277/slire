@@ -24,9 +24,9 @@
     "build": "tsup",
     "test": "jest",
     "clean": "rimraf dist",
-    "prepublishOnly": "npm run clean && npm run build && npm test && npm run lint && npm run format",
-    "publish:dry": "npm publish --dry-run",
-    "release": "npm run clean && npm run build && npm test && npm publish --access public --provenance",
+    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm test && pnpm run lint && pnpm run format",
+    "publish:dry": "pnpm publish --dry-run",
+    "release": "pnpm run clean && pnpm run build && pnpm test && pnpm publish --access public --provenance",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier . --check",
@@ -72,6 +72,7 @@
     "@testcontainers/mongodb": "^11.7.2",
     "@types/jest": "^29.5.12",
     "@types/lodash": "^4.17.20",
+    "@types/node": "^24.10.1",
     "@typescript-eslint/eslint-plugin": "^8.46.3",
     "@typescript-eslint/parser": "^8.46.3",
     "eslint": "^9.39.1",
@@ -86,5 +87,6 @@
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.46.3"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "packageManager": "pnpm@10.24.0+sha512.01ff8ae71b4419903b65c60fb2dc9d34cf8bb6e06d03bde112ef38f7a34d6904c424ba66bea5cdcf12890230bf39f9580473140ed9c946fef328b6e5238a345a"
 }
