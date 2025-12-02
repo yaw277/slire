@@ -1,5 +1,11 @@
 # Slire
 
+![CI](https://github.com/dchowitz/slire/actions/workflows/ci.yml/badge.svg)
+![npm version](https://img.shields.io/npm/v/slire)
+![npm downloads](https://img.shields.io/npm/dm/slire)
+![license](https://img.shields.io/github/license/dchowitz/slire)
+![node version](https://img.shields.io/node/v/slire)
+
 - [Install](#install)
 - [Quickstart](#quickstart)
 - [API](#api)
