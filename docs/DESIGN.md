@@ -1,4 +1,8 @@
-# Design
+# Data Access Design Guide
+
+This guide explores how to choose the right abstraction and integration points for data access in Node.js services, so that database concerns don’t leak unnecessarily into business logic. It focuses on patterns for keeping business logic clean while still taking advantage of managed fields, scope, and transactions, whether you use Slire repositories or native drivers directly.
+
+For Slire’s repository API, see `README.md`. For the rationale behind Slire and its philosophy, see `docs/WHY.md`. The patterns here are backend‑agnostic and apply equally when using other repository-style libraries (or Slire‑like abstractions) or when you build your own repositories directly on top of native database clients.
 
 - [Decoupling Business Logic from Data Access](#decoupling-business-logic-from-data-access)
   - [Scope: Database Operations and Beyond](#scope-database-operations-and-beyond)
@@ -23,7 +27,7 @@
 
 A fundamental principle of maintainable software design is keeping business logic independent from data access implementation. Injecting entire repository instances into business logic components creates tight coupling and obscures the actual data dependencies.
 
-A common counterargument is that "unit testing is easy when you can just mock the entire repository with a fake implementation that works in memory." This practice is indeed widespread with `DocumentService`, where developers create `FakeDocumentService` instances for testing. However, this apparent convenience is actually a design smell that encourages poor architecture. The ease of mocking entire repositories tempts developers to inject whole repository instances in the first place, because changes to business logic data access patterns don't require signature changes - the same repository interface accommodates any new data operations. This practice also encourages passing repositories down through call chains and intermixing data access with business logic, since the repository is always readily available wherever it's needed. While this seems convenient, it actually hides evolving dependencies and makes the true data access patterns invisible at the interface level. This directly leads to over-privileged access (since the full repository is always available), unclear dependencies (since the interface doesn't reveal actual usage), and tight coupling (since business logic becomes dependent on the complete repository contract rather than specific operations).
+A common counterargument is that "unit testing is easy when you can just mock the entire repository or data access service with a fake implementation that works in memory." This practice is indeed widespread: teams often create fake implementations of a service or repository interface for testing. However, this apparent convenience is actually a design smell that encourages poor architecture. The ease of mocking entire repositories tempts developers to inject whole repository instances in the first place, because changes to business logic data access patterns don't require signature changes - the same repository interface accommodates any new data operations. This practice also encourages passing repositories down through call chains and intermixing data access with business logic, since the repository is always readily available wherever it's needed. While this seems convenient, it actually hides evolving dependencies and makes the true data access patterns invisible at the interface level. This directly leads to over-privileged access (since the full repository is always available), unclear dependencies (since the interface doesn't reveal actual usage), and tight coupling (since business logic becomes dependent on the complete repository contract rather than specific operations).
 
 This section presents principles for reducing coupling between data access and business logic. These are guidelines rather than rigid rules - design decisions depend on context, and the complexity of your specific problems will vary. Apply what makes sense for your situation without being overly dogmatic about it.
 
@@ -42,56 +46,56 @@ Finally, note that all examples below use functional approaches rather than clas
 ```typescript
 // FUNCTIONAL APPROACH USED HERE
 
-async function processExpense(
-  deps: { getByIds: ExpenseRepo['getByIds']; updateMany: ExpenseRepo['updateMany'] },
-  input: ProcessRequest
+async function completeTasksInBulk(
+  deps: { getByIds: TaskRepo['getByIds']; updateMany: TaskRepo['updateMany'] },
+  input: CompleteTasksRequest
 ) {
   // ...
 }
 
 // direct application
-await processExpense(createDeps(), processInput());
+await completeTasksInBulk(createDeps(), createRequest());
 
 // ...or wrapping in a lambda for injection
-await handler({ process: input => processExpense(createDeps(), input), otherDep: ...}, input());
+await handler({ complete: input => completeTasksInBulk(createDeps(), input), otherDep: ...}, input());
 
 // ...or partial application (using lodash's partial)
-await handler({ process: partial(processExpense, createDeps()), otherDep: ...}, input());
+await handler({ complete: partial(completeTasksInBulk, createDeps()), otherDep: ...}, input());
 
 // CLASS-BASED EQUIVALENT (which we're not using here)
 
-class ExpenseProcessor {
-  constructor(private deps: { getByIds: ExpenseRepo['getByIds']; updateMany: ExpenseRepo['updateMany'] }) {}
+class TaskBulkCompleter {
+  constructor(private deps: { getByIds: TaskRepo['getByIds']; updateMany: TaskRepo['updateMany'] }) {}
 
-  async processExpense(input: ProcessRequest) {
+  async run(input: CompleteTasksRequest) {
     // ...
   }
 }
 
 // direct application
-await new ExpenseProcessor(createDeps()).processExpense(processInput());
+await new TaskBulkCompleter(createDeps()).run(createRequest());
 
 // ... or partial application for injection
-const processor = new ExpenseProcessor(createDeps());
-await handler({ process: processor.processExpense.bind(processor), otherDep: ...}, input());
+const completer = new TaskBulkCompleter(createDeps());
+await handler({ complete: completer.run.bind(completer), otherDep: ...}, input());
 ```
 
 ### Explicit Dependencies
 
-As mentioned in the previous chapter's [repository type section](#export-repository-types), injecting whole repository instances creates coupling and hides actual dependencies. Instead, business logic should explicitly declare the specific data operations it needs.
+As mentioned in the [README](../README.md#testability-inject-narrow-ports-not-repositories), injecting whole repository instances creates coupling and hides actual dependencies. Instead, business logic should explicitly declare the specific data operations it needs.
 
 ```typescript
 // ❌ BAD - whole repository injected, unclear dependencies
-async function processExpense(
-  deps: { expenseRepo: ExpenseRepo },
-  expenseId: string
+async function completeTask(
+  deps: { taskRepo: TaskRepo },
+  taskId: string
 ) {
-  const expense = await deps.expenseRepo.getById(expenseId);
-  if (!expense || expense.status !== 'pending') return;
+  const task = await deps.taskRepo.getById(taskId);
+  if (!task || task.status !== 'in_progress') return;
 
-  const result = doSomething(expense);
+  const result = doSomething(task);
 
-  await deps.expenseRepo.update(expenseId, { set: result });
+  await deps.taskRepo.update(taskId, { set: result });
 }
 ```
 
@@ -103,23 +107,23 @@ Problems with this approach:
 
 Moreover, unit tests for business logic shouldn't need comprehensive, realistic repository mocks at all. The goal is to test the _business logic_, not data access patterns. Simple data mocks that provide exactly the input data needed for each test scenario are sufficient and often preferable - they're easier to set up and understand.
 
-This doesn't mean data access shouldn't be tested at all. On the contrary, data access is ideally tested against the database (TODO link to test section) separately.
+This doesn't mean data access shouldn't be tested at all. On the contrary, data access is ideally tested against the database separately.
 
 ```typescript
 // ✅ GOOD - explicit dependencies, clear interface
-async function processExpense(
+async function completeTask(
   deps: {
-    getById: ExpenseRepo['getById'];
-    update: ExpenseRepo['update'];
+    getById: TaskRepo['getById'];
+    update: TaskRepo['update'];
   },
-  expenseId: string
+  taskId: string
 ) {
-  const expense = await deps.getById(expenseId);
-  if (!expense || expense.status !== 'pending') return;
+  const task = await deps.getById(taskId);
+  if (!task || task.status !== 'in_progress') return;
 
-  const result = doSomething(expense);
+  const result = doSomething(task);
 
-  await deps.update(expenseId, { set: result });
+  await deps.update(taskId, { set: result });
 }
 ```
 
@@ -129,17 +133,23 @@ Benefits of explicit dependencies:
 - **Clear dependencies**: Signature immediately reveals all data operations required
 - **Simple testing**: Pass lightweight mocks returning test data, verify calls with spies
 
+Gray zones and trade-offs:
+
+Injecting whole repositories is not always wrong. At coarse boundaries – HTTP handlers, background jobs, CLI scripts – it can be perfectly reasonable for a function to receive a repo when it truly needs most of its surface. In early prototyping, passing repositories around can also be an acceptable shortcut until patterns solidify. The problems described above typically appear deeper in the call stack, when repositories start leaking into small, focused business functions that only need one or two operations.
+
+As a rule of thumb, it’s fine for *entrypoints* (handlers, jobs, workflows) to depend on repositories, but inner business functions should depend on narrow, operation‑level ports. A simple heuristic: when a function only ever uses one or two methods on a repository parameter, that’s a good candidate to switch from `repo` to explicit operation‑level dependencies.
+
 You might also consider exposing aliases for heavily used functions:
 
 ```typescript
-// expense-repo.ts
+// task-repo.ts
 
 // ...
-export type ExpenseRepo = ReturnType<typeof createExpenseRepository>;
+export type TaskRepo = ReturnType<typeof createTaskRepo>;
 
-export type GetExpenseById = ExpenseRepo['getById'];
-export type UpdateExpense = ExpenseRepo['update'];
-export type FindExpenses = ExpenseRepo['find'];
+export type GetTaskById = TaskRepo['getById'];
+export type UpdateTask = TaskRepo['update'];
+export type FindTasks = TaskRepo['find'];
 // etc.
 ```
 
@@ -157,47 +167,63 @@ This approach creates a clear processing pipeline where business logic operates 
 Here's a contrived example:
 
 ```typescript
-async function processExpenseReimbursement(
+type TaskCompletionEffects = {
+  newOpenTaskCount: number;
+  newProjectProgress: Project['progress'];
+  projectCompleted: boolean;
+};
+
+function computeTaskCompletionEffects(
+  task: Task,
+  project: Project
+): TaskCompletionEffects {
+  const newOpenTaskCount = Math.max((project.openTaskCount ?? 0) - 1, 0);
+  const projectCompleted = newOpenTaskCount === 0;
+  const newProjectProgress: Project['progress'] = projectCompleted
+    ? 'done'
+    : 'in_progress';
+
+  return { newOpenTaskCount, newProjectProgress, projectCompleted };
+}
+
+async function completeTaskAndUpdateProject(
   deps: {
-    getExpenseById: GetExpenseById;
-    getUserById: GetUserById;
-    updateExpense: UpdateExpense;
-    createReimbursement: CreateReimbursement;
+    getTaskById: GetTaskById;
+    getProjectById: GetProjectById;
+    updateTask: UpdateTask;
+    updateProject: UpdateProject;
   },
-  expenseId: string
+  taskId: string
 ) {
   // 1. READ - gather all data needed
-  const expense = await deps.getExpenseById(expenseId);
-  if (!expense || expense.status !== 'approved') return null;
+  const task = await deps.getTaskById(taskId);
+  if (!task || task.status !== 'in_progress') return null;
 
-  const user = await deps.getUserById(expense.userId);
-  if (!user) throw new Error('User not found');
+  const project = await deps.getProjectById(task.projectId);
+  if (!project) throw new Error('Project not found');
 
   // 2. PROCESS - pure business logic
-  const reimbursementAmount = calculateReimbursement(
-    expense,
-    user.reimbursementRate
-  );
-  const taxDeduction = calculateTaxes(reimbursementAmount, user.taxBracket);
-  const finalAmount = reimbursementAmount - taxDeduction;
-
-  const reimbursementData = {
-    expenseId,
-    userId: expense.userId,
-    amount: finalAmount,
-    taxDeducted: taxDeduction,
-    processedAt: new Date(),
-  };
+  const {
+    newOpenTaskCount,
+    newProjectProgress,
+    projectCompleted,
+  } = computeTaskCompletionEffects(task, project);
 
   // 3. WRITE - persist changes
-  await deps.updateExpense(expenseId, {
-    status: 'reimbursed',
-    reimbursedAt: new Date(),
+  const now = new Date();
+  await deps.updateTask(taskId, {
+    set: { status: 'done', completedAt: now },
   });
 
-  const reimbursementId = await deps.createReimbursement(reimbursementData);
+  await deps.updateProject(project.id, {
+    set: {
+      openTaskCount: newOpenTaskCount,
+      progress: newProjectProgress,
+      lastCompletedTaskId: task.id,
+    },
+  });
 
-  return { reimbursementId, amount: finalAmount };
+  return { projectCompleted };
 }
 ```
 
@@ -210,14 +236,14 @@ Benefits:
 
 The sandwich method works well for many scenarios, but has limitations:
 
-- **Interactive workflows**: When business logic decisions determine what additional data to fetch
-- **Large datasets**: Reading everything upfront may cause memory or performance issues
-- **Streaming processing**: When data arrives incrementally and must be processed as it comes
-- **Complex state machines**: Where reads and writes are heavily interleaved based on intermediate states
+- **Interactive workflows**: When business logic decisions determine what additional data to fetch, a single upfront read can either over-fetch for the “happy path” or under-fetch for rarer branches, leading to awkward conditional logic.
+- **Large datasets**: Reading everything upfront may cause memory or performance issues; prefer paging, streaming, or breaking the operation into multiple smaller sandwiches.
+- **Streaming processing**: When data arrives incrementally and must be processed as it comes, “read everything, then process” is impossible; you can still keep local read–process–write invariants for each chunk.
+- **Complex state machines**: Where reads and writes are heavily interleaved based on intermediate states, treat each state transition as its own small sandwich where possible, and accept that some logic will necessarily mix data access and decision-making.
 
-For such cases, consider breaking the workflow into smaller sandwich operations, or accept some interleaving of data access and business logic while keeping it minimal and well-structured.
+In practice, many systems compose multiple smaller sandwich-style steps into a larger workflow instead of forcing every end-to-end process into a single read–process–write block. This keeps each step testable while letting you tune where data is fetched based on performance and correctness needs.
 
-**As a universal advice, avoid passing data access dependencies down the call chain**: When business logic becomes complex and spans multiple functions, resist the temptation to pass repository instances or data access functions to deeper levels of your call stack, otherwise several problems arise:
+**As general advice, avoid passing data access dependencies down the call chain**: When business logic becomes complex and spans multiple functions, resist the temptation to pass repository instances or data access functions to deeper levels of your call stack, otherwise several problems arise:
 
 - it becomes difficult to distinguish between pure business logic and data access concerns
 - functions that should be testable with simple data become dependent on database mocks
@@ -228,54 +254,47 @@ Instead, keep data access at the orchestration level and pass computed values or
 
 ### Specialized Data Access Functions
 
-Instead of exposing raw repository methods, create purpose-built data access functions that encapsulate domain logic and validation. Building on our reimbursement example:
+Instead of exposing raw repository methods, create purpose-built data access functions that encapsulate domain logic and validation. Building on our task/project example:
 
 ```typescript
-async function processExpenseReimbursement(
+async function completeTaskAndUpdateProject(
   deps: {
-    getReimbursementData: GetReimbursementData;
-    finalizeReimbursement: FinalizeReimbursement;
+    getCompletionData: GetCompletionData;
+    finalizeTaskAndProject: FinalizeTaskAndProject;
   },
-  expenseId: string
+  taskId: string
 ) {
   // 1. READ - single specialized function handles complex data gathering
-  const data = await deps.getReimbursementData(expenseId);
+  const data = await deps.getCompletionData(taskId);
   if (!data) return null;
 
-  const { expense, user } = data;
+  const { task, project } = data;
 
   // 2. PROCESS - pure business logic
-  const reimbursementAmount = calculateReimbursement(
-    expense,
-    user.reimbursementRate
-  );
-  const taxDeduction = calculateTaxes(reimbursementAmount, user.taxBracket);
-  const finalAmount = reimbursementAmount - taxDeduction;
-
-  const reimbursementData = {
-    expenseId,
-    userId: expense.userId,
-    amount: finalAmount,
-    taxDeducted: taxDeduction,
-    processedAt: new Date(),
-  };
+  const {
+    newOpenTaskCount,
+    newProjectProgress,
+    projectCompleted,
+  } = computeTaskCompletionEffects(task, project);
 
   // 3. WRITE - single specialized function handles complex persistence
-  const reimbursementId = await deps.finalizeReimbursement({
-    expenseId,
-    reimbursementData,
+  const result = await deps.finalizeTaskAndProject({
+    taskId,
+    projectId: project.id,
+    newOpenTaskCount,
+    newProjectProgress,
   });
 
-  return { reimbursementId, amount: finalAmount };
+  return { projectCompleted: result.projectCompleted };
 }
 ```
 
 Notice how the specialized functions hide complexity:
 
-- `getReimbursementData` validates status, fetches related user data, and returns a structured result
-- `finalizeReimbursement` handles both expense status updates and reimbursement creation as an atomic operation
+- `getCompletionData` validates task status, fetches the related project, and returns a structured result
+- `finalizeTaskAndProject` coordinates updating both the task and project as an atomic operation (for example, within a transaction)
 
-**Testing complex data operations**: While the business logic (`calculateReimbursement`, `calculateTaxes`) should be unit tested with simple data mocks, the specialized data access functions themselves are excellent candidates for integration tests that run against a test database.
+**Testing complex data operations**: While the business logic in helpers like `computeTaskCompletionEffects` should be unit tested with simple data mocks, the specialized data access functions themselves are excellent candidates for integration tests that run against a test database.
 
 ### Data Access Adapters
 
@@ -283,47 +302,71 @@ Create adapter functions that implement the specialized data access functions us
 
 ```typescript
 // Data access adapter that manages its own repository dependencies
-function createReimbursementDataAccess(mongoClient: MongoClient, organizationId: string, session?: ClientSession) {
-  let expenseRepo = createExpenseRepo(mongoClient, organizationId);
-  let userRepo = createUserRepo(mongoClient, organizationId);
-  let reimbursementRepo = createReimbursementRepo(mongoClient, organizationId);
+function createTaskCompletionDataAccess(
+  mongoClient: MongoClient,
+  tenantId: string,
+  session?: ClientSession
+) {
+  let taskRepo = createTaskRepo(mongoClient, tenantId);
+  let projectRepo = createProjectRepo(mongoClient, tenantId);
 
   if (session) {
-    expenseRepo = expenseRepo.withSession(session);
-    userRepo = userRepo.withSession(session);
-    reimbursementRepo = reimbursementRepo.withSession(session);
+    taskRepo = taskRepo.withSession(session);
+    projectRepo = projectRepo.withSession(session);
   }
 
   return {
-    getReimbursementData: async (id: string) => {
-      const expense = await expenseRepo.getById(id);
-      if (!expense || expense.status !== 'approved') return null;
+    getCompletionData: async (taskId: string) => {
+      const task = await taskRepo.getById(taskId);
+      if (!task || task.status !== 'in_progress') return null;
 
-      const user = await userRepo.getById(expense.userId);
-      if (!user) return null;
+      const project = await projectRepo.getById(task.projectId);
+      if (!project) return null;
 
-      return { expense, user };
+      return { task, project };
     },
 
-    finalizeReimbursement: async ({ expenseId, reimbursementData }) => {
-        await expenseRepo.update(expenseId, {
-          set: { status: 'reimbursed', reimbursedAt: new Date() }
-        });
-        return await reimbursementRepo.create(reimbursementData);
-      }
-    }
+    finalizeTaskAndProject: async ({
+      taskId,
+      projectId,
+      newOpenTaskCount,
+      newProjectProgress,
+    }: {
+      taskId: string;
+      projectId: string;
+      newOpenTaskCount: number;
+      newProjectProgress: Project['progress'];
+    }) => {
+      const now = new Date();
+
+      await taskRepo.update(taskId, {
+        set: { status: 'done', completedAt: now },
+      });
+
+      await projectRepo.update(projectId, {
+        set: {
+          openTaskCount: newOpenTaskCount,
+          progress: newProjectProgress,
+          lastCompletedTaskId: taskId,
+        },
+      });
+
+      return {
+        projectCompleted: newProjectProgress === 'done',
+      };
+    },
   };
 }
 
 // Usage without transaction
-const dataAccess = createReimbursementDataAccess(mongoClient, organizationId);
-await processExpenseReimbursement(dataAccess, expenseId);
+const dataAccess = createTaskCompletionDataAccess(mongoClient, tenantId);
+await completeTaskAndUpdateProject(dataAccess, taskId);
 ```
 
 Data access adapters are valuable when you need:
 
-- Multi-repository operations: Coordinating data from multiple sources (`getReimbursementData` fetches from both expense and user repos)
-- Domain-specific validation: Encapsulating business rules (`expense.status !== 'approved'` check)
+- Multi-repository operations: Coordinating data from multiple sources (`getCompletionData` fetches from both task and project repos)
+- Domain-specific validation: Encapsulating business rules (for example, only allowing completion when a task is `in_progress`)
 - Complex error handling: Standardizing error responses across different failure scenarios
 - Transaction coordination: Managing atomic operations across multiple repositories
 - Data transformation: Converting repository results into domain-specific shapes
@@ -338,15 +381,15 @@ Skip adapters for:
 
 The key principle: add adapters when they provide real value through coordination, validation, transformation, or domain-specific logic. Avoid them for simple pass-through operations where they just add indirection without benefit.
 
-**Finding the right boundary**: Deciding what belongs in business logic versus what belongs in the adapter can be challenging. Consider `expense.status !== 'approved'` - is this a data access concern (filtering) or business logic (validation)? There's no universal answer. Generally:
+**Finding the right boundary**: Deciding what belongs in business logic versus what belongs in the adapter can be challenging. For example, checks that restrict which records are even eligible to load (such as “only active tasks”) can be seen either as data access concerns (filtering) or business logic (validation). There's no universal answer. Generally:
 
-- Put in adapters: Data fetching patterns, cross-repository coordination, technical constraints (`status !== 'approved'` as a data filter)
-- Put in business logic: Domain rules, calculations, business decisions (`canBeReimbursed(expense, user)` as a business rule)
+- Put in adapters: Data fetching patterns, cross-repository coordination, technical constraints (`task.status === 'in_progress'` as a data filter)
+- Put in business logic: Domain rules, calculations, business decisions (`canCompleteTask(task, project)` as a business rule)
 - Gray areas: Use your judgment based on team conventions and whether the logic is more about "how to get data" vs "what to do with data"
 
 Don't over-optimize these boundaries initially. Start with what feels natural, and refactor when patterns emerge or testing becomes difficult.
 
-**Note on adapter signatures**: The above example shows adapters that accept `mongoClient`, `organizationId`, and optional `session` parameters, managing repository creation internally.
+**Note on adapter signatures**: The above example shows adapters that accept `mongoClient`, `tenantId`, and optional `session` parameters, managing repository creation internally.
 
 - **Pros**: Self-contained, simplified transaction handling, consistent interface
 - **Cons**: Less flexible for testing (harder to inject mock repositories), couples adapter to specific repository factories
@@ -359,12 +402,12 @@ When transactions are required, you can reuse specialized data access functions 
 
 ```typescript
 // Keep the business logic function unchanged from the specialized functions section
-async function processExpenseReimbursement(
+async function completeTaskAndUpdateProject(
   deps: {
-    getReimbursementData: GetReimbursementData;
-    finalizeReimbursement: FinalizeReimbursement;
+    getCompletionData: GetCompletionData;
+    finalizeTaskAndProject: FinalizeTaskAndProject;
   },
-  expenseId: string
+  taskId: string
 ) {
   // ... hidden for sake of brevity
 }
@@ -374,24 +417,24 @@ Now, to run this within a transaction, the caller simply passes the session to t
 
 ```typescript
 // Transaction-aware orchestrator
-async function processExpenseReimbursementWithTransaction(
+async function completeTaskAndUpdateProjectWithTransaction(
   mongoClient: MongoClient,
-  organizationId: string,
-  expenseId: string
+  tenantId: string,
+  taskId: string
 ) {
   return await mongoClient.withSession(async (session) => {
     return await session.withTransaction(async () => {
       // Create transaction-aware data access functions - session passed directly
-      const transactionDataAccess = createReimbursementDataAccess(
+      const transactionDataAccess = createTaskCompletionDataAccess(
         mongoClient,
-        organizationId,
+        tenantId,
         session
       );
 
       // Call the unchanged business logic function
-      return await processExpenseReimbursement(
+      return await completeTaskAndUpdateProject(
         transactionDataAccess,
-        expenseId
+        taskId
       );
     });
   });
@@ -410,15 +453,15 @@ Usage:
 
 ```typescript
 // With transaction
-const result = await processExpenseReimbursementWithTransaction(
+const result = await completeTaskAndUpdateProjectWithTransaction(
   mongoClient,
-  organizationId,
-  expenseId
+  tenantId,
+  taskId
 );
 
 // Without transaction (using the original function)
-const dataAccess = createReimbursementDataAccess(mongoClient, organizationId);
-const result2 = await processExpenseReimbursement(dataAccess, expenseId);
+const dataAccess = createTaskCompletionDataAccess(mongoClient, tenantId);
+const result2 = await completeTaskAndUpdateProject(dataAccess, taskId);
 ```
 
 This pattern keeps the business logic clean while giving callers full control over transaction boundaries.
@@ -435,48 +478,101 @@ The key characteristics that distinguish client-side stored procedures from [spe
 - **Transactional by nature**: Often require atomicity across multiple operations
 - **Batch-oriented**: Typically process multiple records or perform complex data maintenance
 
-The `markTopExpenses` function from the [Quick Glimpse](#a-quick-glimpse) section is a perfect example:
+As a more involved example, consider a procedure that recomputes per‑project task summaries for a tenant:
 
 ```typescript
-export async function markTopExpenses({
+export async function recomputeProjectTaskSummaries({
   mongoClient,
-  organizationId,
-  currency,
+  tenantId,
+  now = new Date(),
 }: {
   mongoClient: MongoClient;
-  organizationId: string;
-  currency: string;
+  tenantId: string;
+  now?: Date;
 }): Promise<void> {
-  const TOP_MARKER = 'customInformation.top';
-  const repo = createExpenseRepo(mongoClient, organizationId);
+  const taskRepo = createTaskRepo(mongoClient, tenantId);
+  const projectRepo = createProjectRepo(mongoClient, tenantId);
 
   await mongoClient.withSession(async (session) => {
     await session.withTransaction(async () => {
-      // Remove marker from all current top expenses
-      await repo.collection.updateMany(
-        repo.applyScopeForWrite({ currency, [TOP_MARKER]: true }),
-        repo.buildUpdateOperation({ unset: { [TOP_MARKER]: 1 } }),
-        { session }
-      );
-
-      // Determine new top expenses via aggregation
-      const topExpenses = await repo.collection
-        .aggregate<{ expenseId: string }>(
+      const summaries = await taskRepo.collection
+        .aggregate<{
+          projectId: string;
+          openTaskCount: number;
+          completedTaskCount: number;
+          overdueOpenTaskCount: number;
+          nextDueDate?: Date;
+        }>(
           [
-            { $match: repo.applyConstraints({ currency }) },
-            { $sort: { category: 1, totalClaim: -1 } },
-            { $group: { _id: '$categoryId', expenseId: { $first: '$_id' } } },
+            { $match: taskRepo.applyConstraints({}) },
+            {
+              $group: {
+                _id: '$projectId',
+                openTaskCount: {
+                  $sum: {
+                    $cond: [
+                      { $in: ['$status', ['todo', 'in_progress']] },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+                completedTaskCount: {
+                  $sum: { $cond: [{ $eq: ['$status', 'done'] }, 1, 0] },
+                },
+                overdueOpenTaskCount: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $in: ['$status', ['todo', 'in_progress']] },
+                          { $lt: ['$dueDate', now] },
+                        ],
+                      },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+                nextDueDate: {
+                  $min: {
+                    $cond: [
+                      { $in: ['$status', ['todo', 'in_progress']] },
+                      '$dueDate',
+                      null,
+                    ],
+                  },
+                },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                projectId: '$_id',
+                openTaskCount: 1,
+                completedTaskCount: 1,
+                overdueOpenTaskCount: 1,
+                nextDueDate: 1,
+              },
+            },
           ],
           { session }
         )
         .toArray();
 
-      // Apply marker to new top expenses
-      await repo.collection.bulkWrite(
-        topExpenses.map((e) => ({
+      await projectRepo.collection.bulkWrite(
+        summaries.map((s) => ({
           updateOne: {
-            filter: repo.applyConstraints({ _id: e.expenseId }),
-            update: repo.buildUpdateOperation({ set: { [TOP_MARKER]: true } }),
+            filter: projectRepo.applyConstraints({ _id: s.projectId }),
+            update: projectRepo.buildUpdateOperation({
+              set: {
+                openTaskCount: s.openTaskCount,
+                completedTaskCount: s.completedTaskCount,
+                overdueOpenTaskCount: s.overdueOpenTaskCount,
+                hasOverdueTasks: s.overdueOpenTaskCount > 0,
+                nextDueDate: s.nextDueDate ?? null,
+              },
+            }),
           },
         })),
         { session }
@@ -515,7 +611,7 @@ Client-side stored procedures occupy a unique space in your data access architec
 
 ### Query Abstraction Patterns
 
-One of the ongoing tensions in data access design is how to handle arbitrary queries. SmartRepo provides generic query capabilities through `find` and `count` methods. However, injecting these methods directly into business logic can couple your domain logic to query implementation details, even though the queries remain DB-agnostic.
+One of the ongoing tensions in data access design is how to handle arbitrary queries. Slire repositories (and similar repository-style libraries) provide generic query capabilities through `find` and `count` methods. However, injecting these methods directly into business logic can couple your domain logic to query implementation details, even though the queries remain DB-agnostic.
 
 The fundamental question becomes: **when should you wrap queries in specialized functions versus injecting generic query capabilities directly?**
 
@@ -526,29 +622,29 @@ As with most architectural decisions, there's no universal answer - the choice d
 The simplest approach is injecting `find` and `count` methods directly into business logic:
 
 ```typescript
-async function generateExpenseReport(
+async function generateTaskReport(
   deps: {
-    find: ExpenseRepo['find'];
-    count: ExpenseRepo['count'];
+    find: TaskRepo['find'];
+    count: TaskRepo['count'];
   },
-  params: { daysOverdue: number; userId: string }
+  params: { daysOverdue: number; assigneeId: string }
 ) {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - params.daysOverdue);
 
   // Business logic directly specifies different queries
-  const overdueExpenses = await deps.find({
-    status: 'pending',
-    submittedAt: { $lt: cutoffDate },
+  const overdueTasks = await deps.find({
+    status: 'in_progress',
+    dueDate: { $lt: cutoffDate },
   });
 
-  const totalUserExpenses = await deps.count({
-    userId: params.userId,
+  const totalAssignedTasks = await deps.count({
+    assigneeId: params.assigneeId,
   });
 
   return {
-    overdueExpenses,
-    totalUserExpenses,
+    overdueTasks,
+    totalAssignedTasks,
     reportDate: new Date(),
   };
 }
@@ -575,54 +671,56 @@ The next sections explore several patterns that can abstract queries behind more
 Create purpose-built functions that encapsulate specific query logic:
 
 ```typescript
-// expense-queries.ts
-export function createExpenseQueries(repo: ExpenseRepo) {
+// task-queries.ts
+export function createTaskQueries(repo: TaskRepo) {
   return {
-    findOverdueExpenses: async (daysOverdue: number) => {
+    findOverdueTasks: async (daysOverdue: number) => {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysOverdue);
 
       return await repo.find({
-        status: 'pending',
-        submittedAt: { $lt: cutoffDate },
+        status: 'in_progress',
+        dueDate: { $lt: cutoffDate },
       });
     },
 
-    findHighValueExpenses: async (minAmount: number) => {
+    findHighPriorityTasks: async (minPriority: number) => {
       return await repo.find({
-        status: 'approved',
-        totalClaim: { $gte: minAmount },
+        status: 'todo',
+        'metadata.priority': { $gte: minPriority },
       });
     },
 
-    findExpensesByCategory: async (categoryId: string) => {
-      return await repo.find({ categoryId });
+    findTasksByProject: async (projectId: string) => {
+      return await repo.find({ projectId });
     },
   };
 }
 
 // ...export frequently used signature types
-type ExpenseQueries = ReturnType<typeof createExpenseQueries>;
-export type FindOverdueExpenses = ExpenseQueries['findOverdueExpenses'];
-export type FindHighValueExpenses = ExpenseQueries['findHighValueExpenses'];
+type TaskQueries = ReturnType<typeof createTaskQueries>;
+export type FindOverdueTasks = TaskQueries['findOverdueTasks'];
+export type FindHighPriorityTasks = TaskQueries['findHighPriorityTasks'];
 
 // Usage
-async function generateExpenseAnalysis(
+async function generateTaskAnalysis(
   deps: {
-    findOverdueExpenses: FindOverdueExpenses;
-    findHighValueExpenses: FindHighValueExpenses;
+    findOverdueTasks: FindOverdueTasks;
+    findHighPriorityTasks: FindHighPriorityTasks;
   },
-  params: { daysOverdue: number; minAmount: number }
+  params: { daysOverdue: number; minPriority: number }
 ) {
-  const overdueExpenses = await deps.findOverdueExpenses(params.daysOverdue);
-  const highValueExpenses = await deps.findHighValueExpenses(params.minAmount);
+  const overdueTasks = await deps.findOverdueTasks(params.daysOverdue);
+  const highPriorityTasks = await deps.findHighPriorityTasks(
+    params.minPriority
+  );
 
   // Business logic focused on domain concepts, not queries
-  return analyzeExpensePatterns(overdueExpenses, highValueExpenses);
+  return analyzeTaskPatterns(overdueTasks, highPriorityTasks);
 }
 ```
 
-Note: These query functions can be made more flexible by accepting optional projection parameters, allowing callers to specify which fields they need. For example, `findOverdueExpenses(daysOverdue, { id: true, totalClaim: true })` could return only the essential fields for performance-sensitive operations.
+Note: These query functions can be made more flexible by accepting optional projection parameters, allowing callers to specify which fields they need. For example, `findOverdueTasks(daysOverdue, { id: true, title: true })` could return only the essential fields for performance-sensitive operations.
 
 #### Query Specifications
 
@@ -630,7 +728,7 @@ For more complex scenarios, consider the specification pattern. This pattern is 
 
 The core idea behind specifications is to encapsulate business rules and query criteria as composable, first-class objects. Rather than scattering filter logic throughout your codebase, specifications let you define reusable criteria that can be combined, tested in isolation, and applied consistently across different operations. These specifications can be used both within repository contexts and, depending on the native client SDK, directly with database operations - in MongoDB's case, the filter objects work seamlessly with native collection methods.
 
-In the following example, each specification represents a single business concept - "overdue expenses", "high-value transactions", "user-accessible data" - making your query logic more readable and maintainable. The real power emerges when you compose specifications together, building complex queries from simple, well-tested building blocks.
+In the following example, each specification represents a single business concept - "overdue tasks", "high-priority items", "assignee-accessible data" - making your query logic more readable and maintainable. The real power emerges when you compose specifications together, building complex queries from simple, well-tested building blocks.
 
 ```typescript
 // Generic specification pattern
@@ -651,71 +749,74 @@ function combineSpecs<T>(...specs: Specification<T>[]): Specification<T> {
   };
 }
 
-// Expense-specific implementations
-type ExpenseSpecification = Specification<Expense>;
+// Task-specific implementations
+type TaskSpecification = Specification<Task>;
 
-function overdueExpenseSpec(daysOverdue: number): ExpenseSpecification {
+function overdueTaskSpec(daysOverdue: number): TaskSpecification {
   return {
     toFilter: () => {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysOverdue);
 
       return {
-        status: 'pending',
-        submittedAt: { $lt: cutoffDate },
+        status: 'in_progress',
+        dueDate: { $lt: cutoffDate },
       };
     },
-    describe: `expenses overdue by ${daysOverdue} days`,
+    describe: `tasks overdue by ${daysOverdue} days`,
   };
 }
 
-function categoryExpenseSpec(categoryId: string): ExpenseSpecification {
-  const filter = { categoryId };
+function projectTaskSpec(projectId: string): TaskSpecification {
+  const filter = { projectId };
   return {
     toFilter: () => filter,
-    describe: `expenses in category ${categoryId}`,
+    describe: `tasks in project ${projectId}`,
   };
 }
 
-function highValueExpenseSpec(minAmount: number): ExpenseSpecification {
-  const filter = { totalClaim: { $gte: minAmount } };
+function highPriorityTaskSpec(minPriority: number): TaskSpecification {
+  const filter = { 'metadata.priority': { $gte: minPriority } };
   return {
     toFilter: () => filter,
-    describe: `expenses above ${minAmount}`,
+    describe: `tasks with priority >= ${minPriority}`,
   };
 }
 
 // Usage functions
-async function findExpensesBySpec(
-  deps: { find: FindExpenses },
-  spec: ExpenseSpecification
+async function findTasksBySpec(
+  deps: { find: FindTasks },
+  spec: TaskSpecification
 ) {
   return await deps.find(spec.toFilter());
 }
 
-async function countExpensesBySpec(
-  deps: { count: CountExpenses },
-  spec: ExpenseSpecification
+async function countTasksBySpec(
+  deps: { count: CountTasks },
+  spec: TaskSpecification
 ) {
   return await deps.count(spec.toFilter());
 }
 
 // Example usage showing functional composition power
-function createOverdueTravelExpensesAboveSpec(minAmount: number) {
+function createOverdueHighPriorityTasksForProjectSpec(
+  projectId: string,
+  minPriority: number
+) {
   return combineSpecs(
-    overdueExpenseSpec(30),
-    categoryExpenseSpec('travel'),
-    highValueExpenseSpec(minAmount)
+    overdueTaskSpec(30),
+    projectTaskSpec(projectId),
+    highPriorityTaskSpec(minPriority)
   );
 }
 
-const expensiveTravel = await findExpensesBySpec(
+const importantTasks = await findTasksBySpec(
   deps,
-  createOverdueTravelExpensesAboveSpec(500)
+  createOverdueHighPriorityTasksForProjectSpec('project-123', 5)
 );
-const veryExpensiveTravel = await findExpensesBySpec(
+const veryImportantTasks = await findTasksBySpec(
   deps,
-  createOverdueTravelExpensesAboveSpec(1000)
+  createOverdueHighPriorityTasksForProjectSpec('project-123', 8)
 );
 ```
 
@@ -725,19 +826,19 @@ Specifications can also maintain internal state that evolves with each `toFilter
 
 The key principle is to contain complexity and include only logic that is truly immanent to the query specification itself. External concerns like user authentication, system configuration, or performance monitoring often belong in separate layers rather than being embedded within specification factories. Keep specifications focused on expressing business query logic rather than orchestrating complex system interactions.
 
-**Abstraction considerations:** Injecting functions like `findExpensesBySpec` into business logic doesn't provide much more abstraction than injecting the raw `find` function directly. Business logic can still construct arbitrary specifications on-the-fly, meaning it remains tightly coupled to query implementation details - just through the specification interface rather than raw filters. This creates an illusion of abstraction without the actual benefits.
+**Abstraction considerations:** Injecting functions like `findTasksBySpec` into business logic doesn't provide much more abstraction than injecting the raw `find` function directly. Business logic can still construct arbitrary specifications on-the-fly, meaning it remains tightly coupled to query implementation details - just through the specification interface rather than raw filters. This creates an illusion of abstraction without the actual benefits.
 
-To achieve true decoupling, consider wrapping specific specification usage in named query functions: `findOverdueExpenses()`, `findHighValueExpenses()`, etc. Alternatively, provide registries or factories with semantic names rather than exposing specification construction directly.
+To achieve true decoupling, consider wrapping specific specification usage in named query functions: `findOverdueTasks()`, `findHighPriorityTasks()`, etc. Alternatively, provide registries or factories with semantic names rather than exposing specification construction directly.
 
-**Restricting specification access and the bypass problem:** However, these approaches have a fundamental flaw. Even with registries, factories, and interface segregation to limit access to sensitive specifications, business logic can still construct ad-hoc specifications and pass them to `findExpensesBySpec`, completely undermining any access control:
+**Restricting specification access and the bypass problem:** However, these approaches have a fundamental flaw. Even with registries, factories, and interface segregation to limit access to sensitive specifications, business logic can still construct ad-hoc specifications and pass them to `findTasksBySpec`, completely undermining any access control:
 
 ```typescript
 // Business logic can still bypass all restrictions:
-const rogueSpec: ExpenseSpecification = {
+const rogueSpec: TaskSpecification = {
   toFilter: () => ({ status: 'pending', secretField: true }),
   describe: 'unauthorized query',
 };
-const result = await findExpensesBySpec(deps, rogueSpec); // Works!
+const result = await findTasksBySpec(deps, rogueSpec); // Works!
 ```
 
 The key insight is making it impossible (not just inconvenient) for business logic to create arbitrary specifications. TypeScript's branded types provide exactly this capability - you can mark approved specifications with a unique symbol that only controlled factory functions can add. This prevents business logic from constructing specification objects directly while maintaining full parameterization flexibility.
@@ -758,57 +859,57 @@ function createApprovedSpec<T>(
 }
 
 // Only accept approved specs
-async function findExpensesByApprovedSpec(
-  deps: { find: FindExpenses },
-  spec: ApprovedSpecification<Expense>
+async function findTasksByApprovedSpec(
+  deps: { find: FindTasks },
+  spec: ApprovedSpecification<Task>
 ) {
   return await deps.find(spec.toFilter());
 }
 
 // Controlled factory that business logic CAN access
-export const approvedExpenseSpecs = {
-  overdue: (days: number) => createApprovedSpec(overdueExpenseSpec(days)),
-  category: (categoryId: string) =>
-    createApprovedSpec(categoryExpenseSpec(categoryId)),
+export const approvedTaskSpecs = {
+  overdue: (days: number) => createApprovedSpec(overdueTaskSpec(days)),
+  project: (projectId: string) =>
+    createApprovedSpec(projectTaskSpec(projectId)),
 } as const;
 
 // Business logic cannot create approved specs directly
 const rogueSpec = { toFilter: () => ({}), describe: 'hack' }; // ❌ Missing brand
 const rogueApproved = createApprovedSpec(rogueSpec); // ❌ createApprovedSpec not exported!
-const validSpec = approvedExpenseSpecs.overdue(30); // ✅ Only way to get approved spec
+const validSpec = approvedTaskSpecs.overdue(30); // ✅ Only way to get approved spec
 ```
 
-**Consider the trade-offs:** While branded specifications provide bulletproof access control, this level of complexity might not always be justified. Clear code review practices and team conventions can often ensure proper abstraction boundaries without TypeScript ceremony. A simpler alternative is avoiding `findBySpec` exposure altogether - wrap specification usage in named query functions like `findOverdueExpenses()` instead. This adds another layer of indirection but achieves similar abstraction benefits with conventional patterns most teams already understand.
+**Consider the trade-offs:** While branded specifications provide bulletproof access control, this level of complexity might not always be justified. Clear code review practices and team conventions can often ensure proper abstraction boundaries without TypeScript ceremony. A simpler alternative is avoiding `findBySpec` exposure altogether - wrap specification usage in named query functions like `findOverdueTasks()` instead. This adds another layer of indirection but achieves similar abstraction benefits with conventional patterns most teams already understand.
 
 #### Repository Extension
 
 Another approach is extending your repository with domain-specific methods:
 
 ```typescript
-function createExtendedExpenseRepo(baseRepo: ExpenseRepo) {
+function createExtendedTaskRepo(baseRepo: TaskRepo) {
   return {
     ...baseRepo,
 
-    async findOverdueExpenses(daysOverdue: number) {
+    async findOverdueTasks(daysOverdue: number) {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysOverdue);
 
       return await baseRepo.find({
-        status: 'pending',
-        submittedAt: { $lt: cutoffDate },
+        status: 'in_progress',
+        dueDate: { $lt: cutoffDate },
       });
     },
 
-    async findExpensesByDateRange(startDate: Date, endDate: Date) {
+    async findTasksByDueDateRange(startDate: Date, endDate: Date) {
       return await baseRepo.find({
-        submittedAt: { $gte: startDate, $lte: endDate },
+        dueDate: { $gte: startDate, $lte: endDate },
       });
     },
 
-    async findPendingExpensesAboveAmount(amount: number) {
+    async findHighPriorityTasksAbove(priority: number) {
       return await baseRepo.find({
-        status: 'pending',
-        totalClaim: { $gte: amount },
+        status: 'todo',
+        'metadata.priority': { $gte: priority },
       });
     },
   };
@@ -874,51 +975,45 @@ For applications where consistency and convenience are priorities, a single comp
 
 ```typescript
 export type DataAccess = {
-  expenses: {
+  tasks: {
     // Repository access
-    repo: ExpenseRepo;
+    repo: TaskRepo;
 
     // Named queries
-    getByTrip: (tripId: string) => Promise<Expense[]>;
-    getByExportSummary: (exportSummaryId: string) => Promise<Expense[]>;
+    getByProject: (projectId: string) => Promise<Task[]>;
+    getByAssignee: (assigneeId: string) => Promise<Task[]>;
 
     // Client-side stored procedures
-    markTopExpensesByCategory: MarkTopExpensesByCategory;
-    finalizeExpenseReimbursement: FinalizeExpenseReimbursement;
+    recomputeProjectTaskSummaries: RecomputeProjectTaskSummaries;
+    archiveOverdueInProgressTasks: ArchiveOverdueInProgressTasks;
 
     // Sub-domain organization
-    receipts: {
-      insertReceiptExpenseAndStartTracking: InsertReceiptExpenseAndStartTracking;
-      updateReceiptFromDigitizeCallback: UpdateReceiptFromDigitizeCallback;
-      updateReceiptFromConversionCallback: UpdateReceiptFromConversionCallback;
-    };
-
-    perDiems: {
-      getRelevantHistoricPerDiemExpenses: GetRelevantHistoricPerDiemExpenses;
-      removeTaxabilityFromPerDiemExpenses: RemoveTaxabilityFromPerDiemExpenses;
-      getPerDiemExpensesToBeRecomputed: GetPerDiemExpensesToBeRecomputed;
+    maintenance: {
+      // examples of more specialized procedures
+      cleanupStaleTasks: CleanupStaleTasks;
+      backfillTaskMetadata: BackfillTaskMetadata;
     };
   };
 
-  trips: {
-    repo: TripRepo;
-    getTripWithExpenseSummary: GetTripWithExpenseSummary;
-    deleteAutogeneratedTripExpenses: DeleteAutogeneratedTripExpenses;
-    updateLinkedTrips: UpdateLinkedTrips;
+  projects: {
+    repo: ProjectRepo;
+    getProjectWithTaskSummary: GetProjectWithTaskSummary;
+    deleteAutogeneratedProjectTasks: DeleteAutogeneratedProjectTasks;
+    updateLinkedProjects: UpdateLinkedProjects;
   };
 
   users: {
     repo: UserRepo;
     getRecentUserPreferences: GetRecentUserPreferences;
-    updateUserExpenseSettings: UpdateUserExpenseSettings;
+    updateUserTaskSettings: UpdateUserTaskSettings;
   };
 
   // Operations using multiple repositories
   composite: {
-    importExpensesFromCsv: ImportExpensesFromCsv;
+    importTasksFromCsv: ImportTasksFromCsv;
     validateDataConsistency: ValidateDataConsistency;
-    recalculateExpenseTotals: RecalculateExpenseTotals;
-    syncExpenseStatusAcrossTrips: SyncExpenseStatusAcrossTrips;
+    recalculateAllProjectSummaries: RecalculateAllProjectSummaries;
+    syncTaskStatusAcrossProjects: SyncTaskStatusAcrossProjects;
   };
 };
 ```
@@ -929,47 +1024,38 @@ The corresponding factory implementation organizes all repositories and function
 // data-access-factory.ts
 export function createDataAccess(
   deps: { mongoClient: MongoClient; logger: Logger },
-  { organizationId }: { organizationId: string }
+  { tenantId }: { tenantId: string }
 ): DataAccess {
-  const expenseRepo = createExpenseRepo(deps, organizationId);
-  const tripRepo = createTripRepo(deps, organizationId);
-  const userRepo = createUserRepo(deps, organizationId);
+  const taskRepo = createTaskRepo(deps, tenantId);
+  const projectRepo = createProjectRepo(deps, tenantId);
+  const userRepo = createUserRepo(deps, tenantId);
 
   return {
-    expenses: {
-      repo: expenseRepo,
+    tasks: {
+      repo: taskRepo,
 
       // Named queries
-      getByTrip: createGetByTrip(expenseRepo),
-      getByExportSummary: createGetByExportSummary(expenseRepo),
+      getByProject: createGetByProject(taskRepo),
+      getByAssignee: createGetByAssignee(taskRepo),
 
       // Client-side stored procedures
-      markTopExpensesByCategory: createMarkTopExpensesByCategory({
-        expenseRepo,
+      recomputeProjectTaskSummaries: createRecomputeProjectTaskSummaries({
+        taskRepo,
+        projectRepo,
         logger,
       }),
-      finalizeExpenseReimbursement: createFinalizeExpenseReimbursement({
-        expenseRepo,
-        userRepo,
-        logger,
-      }),
+      archiveOverdueInProgressTasks:
+        createArchiveOverdueInProgressTasks(deps, tenantId),
 
-      receipts: {
-        // these ops manage transactions internally and instantiate repos themselve
-        insertReceiptExpenseAndStartTracking:
-          createInsertReceiptExpenseAndStartTracking(deps, organizationId),
-        updateReceiptFromDigitizeCallback:
-          createUpdateReceiptFromDigitizeCallback(deps, organizationId),
-        updateReceiptFromConversionCallback:
-          createUpdateReceiptFromConversionCallback(deps, organizationId),
+      maintenance: {
+        cleanupStaleTasks: createCleanupStaleTasks(deps, tenantId),
+        backfillTaskMetadata: createBackfillTaskMetadata(deps, tenantId),
       },
-
-      // ... other sub-domains like perDiems
     },
 
-    trips: {
-      repo: tripRepo,
-      // ... trip-specific operations
+    projects: {
+      repo: projectRepo,
+      // ... project-specific operations
     },
 
     users: {
@@ -984,6 +1070,8 @@ export function createDataAccess(
 }
 ```
 
+In practice, most codebases grow into such a factory gradually rather than designing it up front. You might start with a single module like `createTaskDataAccess` and only later introduce a unifying `createDataAccess` when multiple domains and cross-cutting operations emerge. Be wary of turning the unified factory into a “kitchen sink” – it should expose commonly needed building blocks, not every one-off operation that happens to touch the database.
+
 **Whether or not to pass a transaction session to the factory** is a design choice that depends on your application's needs. The example above omits session from the factory signature since it provides client-side stored procedures that manage their own transactions internally. Including a session parameter would create inconsistent behavior where some operations use the factory's session while others manage their own, leading to confusion about transaction boundaries.
 
 Since the main factory requires explicit dependencies and context, it's often helpful to create convenience factories that pre-configure common usage patterns. These wrapper functions encapsulate the repetitive setup for typical scenarios like HTTP requests, background scripts, or integration tests, making the data access factory easier to use across different parts of your application.
@@ -997,7 +1085,7 @@ export function createDataAccessForRequest(req: express.Request): DataAccess {
       mongoClient: mongoClientSingleton(),
       logger,
     },
-    validateOrgScope(req.params)
+    validateTenantScope(req.params)
   );
 }
 
@@ -1008,15 +1096,15 @@ export function createDataAccessForScript(): DataAccess {
       mongoClient: mongoClientSingleton(),
       logger: consoleLogger(),
     },
-    validateOrgScope(process.env)
+    validateTenantScope(process.env)
   );
 }
 
 // Convenience factory for integration tests
-export function createDataAccessForTest(organizationId: string): DataAccess {
+export function createDataAccessForTest(tenantId: string): DataAccess {
   return createDataAccess(
     { mongoClient: mongoClientFromTestContainer(), logger: nullLogger() },
-    { organizationId }
+    { tenantId }
   );
 }
 ```
@@ -1026,60 +1114,57 @@ export function createDataAccessForTest(organizationId: string): DataAccess {
 For larger applications or teams, breaking the monolithic factory into focused, domain-specific modules can improve maintainability and team ownership:
 
 ```typescript
-// expense-data-access.ts
-export type ExpenseDataAccess = {
-  repo: ExpenseRepo;
-  getByTrip: (tripId: string) => Promise<Expense[]>;
-  getByExportSummary: (exportSummaryId: string) => Promise<Expense[]>;
-  markTopExpensesByCategory: MarkTopExpensesByCategory;
-  finalizeExpenseReimbursement: FinalizeExpenseReimbursement;
-  receipts: {
-    // ...
-  };
-  perDiems: {
+// task-data-access.ts
+export type TaskDataAccess = {
+  repo: TaskRepo;
+  getByProject: (projectId: string) => Promise<Task[]>;
+  getByAssignee: (assigneeId: string) => Promise<Task[]>;
+  recomputeProjectTaskSummaries: RecomputeProjectTaskSummaries;
+  archiveOverdueInProgressTasks: ArchiveOverdueInProgressTasks;
+  maintenance: {
     // ...
   };
 };
 
-export function createExpenseDataAccess(
+export function createTaskDataAccess(
   deps: { mongoClient: MongoClient; logger: Logger },
-  params: { organizationId: string }
-): ExpenseDataAccess {
+  params: { tenantId: string }
+): TaskDataAccess {
   // ...
 }
 
-// trip-data-access.ts
-export type TripDataAccess = {
-  repo: TripRepo;
-  getTripWithExpenseSummary: GetTripWithExpenseSummary;
-  deleteAutogeneratedTripExpenses: DeleteAutogeneratedTripExpenses;
-  updateLinkedTrips: UpdateLinkedTrips;
+// project-data-access.ts
+export type ProjectDataAccess = {
+  repo: ProjectRepo;
+  getProjectWithTaskSummary: GetProjectWithTaskSummary;
+  deleteAutogeneratedProjectTasks: DeleteAutogeneratedProjectTasks;
+  updateLinkedProjects: UpdateLinkedProjects;
 };
 
-export function createTripDataAccess(
+export function createProjectDataAccess(
   deps: { mongoClient: MongoClient; logger: Logger },
-  params: { organizationId: string }
-): TripDataAccess {
+  params: { tenantId: string }
+): ProjectDataAccess {
   // ...
 }
 
 // ... user-data-access.ts, composite-data-access.ts
 ```
 
-The modular approach provides flexibility in how consumers access data operations. You can use domain-specific modules directly when working within a focused context (e.g., `createExpenseDataAccess` for expense-heavy workflows), or create a comprehensive factory that combines all modules for applications that need broad access.
+The modular approach provides flexibility in how consumers access data operations. You can use domain-specific modules directly when working within a focused context (e.g., `createTaskDataAccess` for task-heavy workflows), or create a comprehensive factory that combines all modules for applications that need broad access.
 
 ```typescript
 // comprehensive-data-access.ts
 export type ComprehensiveDataAccess = {
-  expenses: ExpenseDataAccess;
-  trips: TripDataAccess;
+  tasks: TaskDataAccess;
+  projects: ProjectDataAccess;
   users: UserDataAccess;
   composite: CompositeDataAccess;
 };
 
 export function createComprehensiveDataAccess(
   deps: { mongoClient: MongoClient; logger: Logger },
-  params: { organizationId: string }
+  params: { tenantId: string }
 ): ComprehensiveDataAccess {
   // ... combines all modular factories
 }
@@ -1126,12 +1211,12 @@ A simple example:
 
 ```typescript
 export type DataAccess = {
-  expenses: { repo: ExpenseRepo /* ... */ };
-  trips: { repo: TripRepo /* ... */ };
+  tasks: { repo: TaskRepo /* ... */ };
+  projects: { repo: ProjectRepo /* ... */ };
 
   // Adapter factories - lazy creation when needed
   adapters: {
-    reimbursement: (options?: AdapterOptions) => ReimbursementDataAccess;
+    taskProjectSync: (options?: AdapterOptions) => TaskProjectSyncAccess;
     reporting: () => ReportingDataAccess;
   };
 };
@@ -1154,18 +1239,18 @@ HTTP request handlers follow a consistent structure, but the approach evolves ba
 Simple case - no authorization, direct business logic:
 
 ```typescript
-async function handleSimpleExpenseUpdate(req: Request, res: Response) {
+async function handleSimpleTaskUpdate(req: Request, res: Response) {
   // 1. Validate payload and extract context
-  const expenseData = validatePayload(req.body);
+  const taskData = validatePayload(req.body);
 
   // 2. Instantiate data access and call business logic
-  const repo = createDataAccessForRequest(req).expenses.repo;
-  const result = await processExpenseUpdate(
+  const repo = createDataAccessForRequest(req).tasks.repo;
+  const result = await processTaskUpdate(
     {
-      getExpenseById: repo.getById,
-      updateExpense: repo.update,
+      getTaskById: repo.getById,
+      updateTask: repo.update,
     },
-    { expenseData }
+    { taskData }
   );
 
   res.json(result);
@@ -1175,55 +1260,54 @@ async function handleSimpleExpenseUpdate(req: Request, res: Response) {
 With authorization - reveals data access duplication issues:
 
 ```typescript
-async function handleExpenseUpdateWithAuth(req: Request, res: Response) {
+async function handleTaskUpdateWithAuth(req: Request, res: Response) {
   const { userId } = validateAuth(req);
-  const expenseData = validatePayload(req.body);
-  const repo = createDataAccessForRequest(req).expenses.repo;
+  const taskData = validatePayload(req.body);
+  const repo = createDataAccessForRequest(req).tasks.repo;
 
-  // Problem: Authorization needs expense data
-  await checkCanWriteExpense(
+  // Problem: Authorization needs task data
+  await checkCanUpdateTask(
     {
-      getExpenseById: repo.getById, // Fetch #1
+      getTaskById: repo.getById // Fetch #1
     },
-    { userId, expenseId: expenseData.expenseId }
+    { userId, taskId: taskData.taskId }
   );
 
-  // Problem: Business logic may also need the same expense data
-  const result = await processExpenseUpdate(
+  // Problem: Business logic may also need the same task data
+  const result = await processTaskUpdate(
     {
-      getExpenseById: repo.getById, // Potential fetch #2
-      updateExpense: repo.update,
+      getTaskById: repo.getById, // Potential fetch #2
+      updateTask: repo.update,
     },
-    { expenseData }
+    { taskData }
   );
 
   res.json(result);
 }
 ```
 
-Furthermore, this example reveals a leaky abstraction problem: the function `checkCanWriteExpense` receives both the data identifier (`expenseId`) and the method to fetch that data (`getExpenseById`), creating awkward coupling. The authorization function shouldn't need to know how to fetch expenses - it should work with the data directly.
+Furthermore, this example reveals a leaky abstraction problem: the function `checkCanUpdateTask` receives both the data identifier (`taskId`) and the method to fetch that data (`getTaskById`), creating awkward coupling. The authorization function shouldn't need to know how to fetch tasks - it should work with the data directly.
 
 **Refined approach** - strategic prefetching and mixed injection:
 
 ```typescript
-async function handleExpenseUpdate(req: Request, res: Response) {
+async function handleTaskUpdate(req: Request, res: Response) {
   const { userId } = validateAuth(req);
-  const expenseData = validatePayload(req.body);
-  const repo = createDataAccessForRequest(req).expenses.repo;
+  const taskData = validatePayload(req.body);
+  const repo = createDataAccessForRequest(req).tasks.repo;
 
   // Strategic prefetch: Get data needed by multiple operations
-  const expense =
-    (await repo.getById(expenseData.expenseId)) ?? throwNotFound();
+  const task = (await repo.getById(taskData.taskId)) ?? throwNotFound();
 
   // Clean authorization: Pass actual data, not data access
-  await checkCanWriteExpense({ userId, expense });
+  await checkCanUpdateTask({ userId, task });
 
   // Business logic: Clean dependency injection with prefetched data
-  const result = await processExpenseUpdate(
+  const result = await processTaskUpdate(
     {
-      updateExpense: repo.update,
+      updateTask: repo.update,
     },
-    { expenseData, expense }
+    { taskData, task }
   );
 
   res.json(result);
@@ -1234,47 +1318,46 @@ The evolution sketched here shows key trade-offs: pure dependency injection (mid
 
 Alternative approaches like internal caching in the data access factory can solve duplication transparently, but introduce implicit behavior and potential side-effects that may not be obvious to all developers. The explicit prefetching approach trades some handler complexity for predictable, transparent behavior.
 
-Composing multiple business operations - as a final example, consider a more complex expense update logic that also needs to recalculate trip totals and potentially notify managers. Rather than handling all orchestration at the handler level, you can push the business orchestration down into the workflow function while keeping the handler focused on request/response concerns and dependency wiring:
+Composing multiple business operations - as a final example, consider a more complex task update logic that also needs to recalculate project summaries and potentially notify managers. Rather than handling all orchestration at the handler level, you can push the business orchestration down into the workflow function while keeping the handler focused on request/response concerns and dependency wiring:
 
 ```typescript
-async function handleComplexExpenseUpdate(req: Request, res: Response) {
+async function handleComplexTaskUpdate(req: Request, res: Response) {
   const { userId } = validateAuth(req);
-  const expenseData = validatePayload(req.body);
+  const taskData = validatePayload(req.body);
   const dataAccess = createDataAccessForRequest(req);
   const pubSubAccess = createPubSubAccessForRequest(req);
 
   // Prefetch data needed for authorization and business logic
-  const expense =
-    (await dataAccess.expenses.repo.getById(expenseData.expenseId)) ??
-    throwNotFound();
-  await checkCanWriteExpense({ userId, expense });
+  const task =
+    (await dataAccess.tasks.repo.getById(taskData.taskId)) ?? throwNotFound();
+  await checkCanUpdateTask({ userId, task });
 
   // Create business functions that close over their data access needs
-  const recalculateTrip = partial(recalculateTripTotals, {
-    findExpensesByTrip: dataAccess.expenses.findByTripId,
-    updateTrip: dataAccess.trips.repo.update,
+  const recalculateProject = partial(recalculateProjectSummaries, {
+    findTasksByProject: dataAccess.tasks.getByProject,
+    updateProject: dataAccess.projects.repo.update,
   });
 
-  const notifyManager = partial(notifyExpenseUpdate, {
+  const notifyManager = partial(notifyTaskUpdate, {
     getUserById: dataAccess.users.repo.getById,
     sendEmail: pubSubAccess.notifications.sendEmail,
   });
 
   // Business orchestration handled by the workflow function
-  const result = await processExpenseUpdate(
+  const result = await processTaskUpdate(
     {
-      updateExpense: dataAccess.expenses.repo.update,
-      recalculateTrip,
+      updateTask: dataAccess.tasks.repo.update,
+      recalculateProject,
       notifyManager,
     },
-    { expenseData, expense, userId }
+    { taskData, task, userId }
   );
 
   res.json(result);
 }
 ```
 
-This approach keeps the handler focused on request lifecycle concerns (validation, authorization, response) while pushing business orchestration logic into `processExpenseUpdate`. The business process function receives business capabilities as dependencies, not raw data access methods, creating cleaner separation of concerns.
+This approach keeps the handler focused on request lifecycle concerns (validation, authorization, response) while pushing business orchestration logic into `processTaskUpdate`. The business process function receives business capabilities as dependencies, not raw data access methods, creating cleaner separation of concerns.
 
 ### Background Jobs and Scripts
 
@@ -1287,17 +1370,17 @@ Like HTTP handlers, background jobs and scripts follow the same pattern of insta
 Direct use of building blocks from factory (DB-agnostic):
 
 ```typescript
-async function runExpenseCleanupJob(organizationId: string) {
+async function runStaleTaskCleanupJob(tenantId: string) {
   const logger = createJobLogger();
-  const repo = createDataAccess({ organizationId, logger }).expenses.repo;
+  const repo = createDataAccess({ tenantId, logger }).tasks.repo;
 
   // DB-agnostic deletion (2 roundtrips)
-  const staleExpenses = await repo.findBySpec(createStaleExpenseSpec(30), {
+  const staleTasks = await repo.findBySpec(createStaleTaskSpec(30), {
     id: true,
   });
-  await repo.deleteMany(staleExpenses.map((e) => e.id));
+  await repo.deleteMany(staleTasks.map((t) => t.id));
 
-  logger.info(`Cleaned up ${staleExpenses.length} stale expenses`);
+  logger.info(`Cleaned up ${staleTasks.length} stale tasks`);
 }
 ```
 
@@ -1306,18 +1389,18 @@ While this example uses clean, testable interfaces, it requires two database rou
 Skip data access factory and instantiate repository to get access to native features:
 
 ```typescript
-async function runExpenseCleanupJobOptimized(organizationId: string) {
+async function runStaleTaskCleanupJobOptimized(tenantId: string) {
   const logger = createJobLogger();
   const mongoClient = getMongoClient();
 
   // Access repository factory directly for MongoDB-specific operations
-  const repo = createExpenseRepo(mongoClient, { organizationId });
+  const repo = createTaskRepo(mongoClient, { tenantId });
 
   // MongoDB-specific: efficient single deleteMany operation
-  const filter = repo.applyConstraints(createStaleExpenseSpec(30).toFilter());
+  const filter = repo.applyConstraints(createStaleTaskSpec(30).toFilter());
   const result = await repo.collection.deleteMany(filter);
 
-  logger.info(`Cleaned up ${result.deletedCount} stale expenses`);
+  logger.info(`Cleaned up ${result.deletedCount} stale tasks`);
 }
 ```
 
@@ -1326,19 +1409,19 @@ The two approaches illustrate key architectural tradeoffs: the data access facto
 Complex workflows instantiated on-demand:
 
 ```typescript
-async function runReceiptReprocessingJob(organizationId: string) {
+async function runTaskRecalculationJob(tenantId: string) {
   const logger = createJobLogger();
-  const dataAccess = createDataAccess({ organizationId, logger });
+  const dataAccess = createDataAccess({ tenantId, logger });
 
   // Complex workflow: instantiate separately, use factory's building blocks
-  const reprocessor = createReceiptReprocessor({
-    expenseRepo: dataAccess.expenses.repo,
-    findFailedReceipts: dataAccess.expenses.findFailedReceipts,
-    updateReceiptStatus: dataAccess.expenses.updateReceiptStatus,
+  const calculator = createTaskRecalculator({
+    taskRepo: dataAccess.tasks.repo,
+    findTasksToRecalculate: dataAccess.tasks.findTasksToRecalculate,
+    recomputeProjectTaskSummaries: dataAccess.tasks.recomputeProjectTaskSummaries,
     logger,
   });
 
-  await reprocessor.execute({ batchSize: 100, retryFailures: true });
+  await calculator.execute({ batchSize: 100, retryFailures: true });
 }
 ```
 
