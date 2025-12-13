@@ -1101,6 +1101,28 @@ describe('createtMongoRepo', function () {
   });
 
   describe('find', () => {
+    it('should reject invalid filter shapes at runtime', async () => {
+      const repo = createMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      // non-object / nullish filters
+      expect(() => repo.find(null as any)).toThrow(
+        /Invalid find filter: filter must be an object/,
+      );
+      expect(() => repo.find('name' as any)).toThrow(
+        /Invalid find filter: filter must be an object/,
+      );
+      expect(() => repo.find([] as any)).toThrow(
+        /Invalid find filter: filter must be an object/,
+      );
+
+      // nested object value (non-scalar) should be rejected
+      expect(() => repo.find({ name: { first: 'Alice' } } as any)).toThrow(
+        "Invalid find filter: filter value for 'name' must be a scalar",
+      );
+    });
     it('should return empty on scope-breach by default', async () => {
       const repo = createMongoRepo({
         collection: testCollection(),
@@ -1350,6 +1372,26 @@ describe('createtMongoRepo', function () {
   });
 
   describe('findPage', () => {
+    it('should reject invalid filter shapes at runtime', async () => {
+      const repo = createMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+        options: { generateId: ascendingIds() },
+      });
+
+      await expect(repo.findPage(null as any, { limit: 10 })).rejects.toThrow(
+        /Invalid findPage filter: filter must be an object/,
+      );
+      await expect(repo.findPage([] as any, { limit: 10 })).rejects.toThrow(
+        /Invalid findPage filter: filter must be an object/,
+      );
+
+      await expect(
+        repo.findPage({ name: { nested: true } } as any, { limit: 10 }),
+      ).rejects.toThrow(
+        "Invalid findPage filter: filter value for 'name' must be a scalar",
+      );
+    });
     it('should return a page of results with pagination cursor', async () => {
       const repo = createMongoRepo({
         collection: testCollection(),
@@ -1907,6 +1949,25 @@ describe('createtMongoRepo', function () {
   });
 
   describe('count', () => {
+    it('should reject invalid filter shapes at runtime', async () => {
+      const repo = createMongoRepo({
+        collection: testCollection(),
+        mongoClient: mongo.client,
+      });
+
+      await expect(repo.count(null as any)).rejects.toThrow(
+        /Invalid count filter: filter must be an object/,
+      );
+      await expect(repo.count([] as any)).rejects.toThrow(
+        /Invalid count filter: filter must be an object/,
+      );
+
+      await expect(
+        repo.count({ name: { nested: true } } as any),
+      ).rejects.toThrow(
+        "Invalid count filter: filter value for 'name' must be a scalar",
+      );
+    });
     it('should count entities matching the filter', async () => {
       const repo = createMongoRepo({
         collection: testCollection(),

@@ -1200,6 +1200,28 @@ describe('createFirestoreRepo', function () {
   });
 
   describe('find', () => {
+    it('should reject invalid filter shapes at runtime', async () => {
+      const repo = createFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      // non-object / nullish filters
+      expect(() => repo.find(null as any)).toThrow(
+        /Invalid find filter: filter must be an object/,
+      );
+      expect(() => repo.find('name' as any)).toThrow(
+        /Invalid find filter: filter must be an object/,
+      );
+      expect(() => repo.find([] as any)).toThrow(
+        /Invalid find filter: filter must be an object/,
+      );
+
+      // nested object value (non-scalar) should be rejected
+      expect(() => repo.find({ name: { first: 'Alice' } } as any)).toThrow(
+        "Invalid find filter: filter value for 'name' must be a scalar",
+      );
+    });
     it('should find entities matching the filter', async () => {
       const repo = createFirestoreRepo({
         collection: testCollection(),
@@ -1449,6 +1471,26 @@ describe('createFirestoreRepo', function () {
   });
 
   describe('findPage', () => {
+    it('should reject invalid filter shapes at runtime', async () => {
+      const repo = createFirestoreRepo<TestEntity>({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+        options: { generateId: ascendingIds() },
+      });
+
+      await expect(repo.findPage(null as any, { limit: 10 })).rejects.toThrow(
+        /Invalid findPage filter: filter must be an object/,
+      );
+      await expect(repo.findPage([] as any, { limit: 10 })).rejects.toThrow(
+        /Invalid findPage filter: filter must be an object/,
+      );
+
+      await expect(
+        repo.findPage({ name: { nested: true } } as any, { limit: 10 }),
+      ).rejects.toThrow(
+        "Invalid findPage filter: filter value for 'name' must be a scalar",
+      );
+    });
     it('should return a page of results with pagination cursor', async () => {
       const repo = createFirestoreRepo<TestEntity>({
         collection: testCollection(),
@@ -2023,6 +2065,25 @@ describe('createFirestoreRepo', function () {
   });
 
   describe('count', () => {
+    it('should reject invalid filter shapes at runtime', async () => {
+      const repo = createFirestoreRepo({
+        collection: testCollection(),
+        firestore: firestore.firestore,
+      });
+
+      await expect(repo.count(null as any)).rejects.toThrow(
+        /Invalid count filter: filter must be an object/,
+      );
+      await expect(repo.count([] as any)).rejects.toThrow(
+        /Invalid count filter: filter must be an object/,
+      );
+
+      await expect(
+        repo.count({ name: { nested: true } } as any),
+      ).rejects.toThrow(
+        "Invalid count filter: filter value for 'name' must be a scalar",
+      );
+    });
     it('should count entities matching the filter', async () => {
       const repo = createFirestoreRepo({
         collection: testCollection(),

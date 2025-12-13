@@ -1,5 +1,7 @@
 export type Maybe<T> = T | undefined | null;
 
+export type Scalar = string | number | boolean | null | undefined | Date;
+
 // utility type to expand complex types for better IDE tooltips
 export type Prettify<T> = {
   [K in keyof T]: T[K];
@@ -49,20 +51,7 @@ export type StringKeys<T> = {
 }[keyof T] &
   string;
 
-// Nested path typing helpers (depth-limited recursive) for optional leaves
-
-// Treat these as primitives for path derivation
-export type Primitive =
-  | string
-  | number
-  | boolean
-  | bigint
-  | symbol
-  | null
-  | undefined
-  | Date
-  | RegExp;
-
+// Nested path typing helper (depth-limited recursive)
 type Decrease<D> = D extends 4
   ? 3
   : D extends 3
@@ -81,7 +70,7 @@ export type OptionalPropPath<
   Depth extends number = 2,
 > = Depth extends never
   ? never
-  : T extends Primitive
+  : T extends Scalar
     ? never
     : T extends ReadonlyArray<any> | any[]
       ? never
@@ -101,30 +90,44 @@ export type OptionalPropPath<
           }[Extract<keyof T, string>]
         : never;
 
-// dotted path to all properties that are of primitive types
-// depth-limited recursive for performance (2 dots)
-export type PrimitivePropPath<
+// Dotted path to all properties that are of scalar types (depth-limited).
+export type ScalarPropPath<
   T,
   Prefix extends string = '',
   Depth extends number = 2,
 > = Depth extends never
   ? never
-  : T extends Primitive
+  : T extends Scalar
     ? never
     : T extends ReadonlyArray<any> | any[]
       ? never
       : T extends { [K in keyof T]: T[K] }
         ? {
             [K in Extract<keyof T, string>]:
-              | (T[K] extends Primitive
+              | (T[K] extends Scalar
                   ? Prefix extends ''
                     ? K
                     : `${Prefix}.${K}`
                   : never)
-              | PrimitivePropPath<
+              | ScalarPropPath<
                   T[K],
                   Prefix extends '' ? K : `${Prefix}.${K}`,
                   Decrease<Depth>
                 >;
           }[Extract<keyof T, string>]
         : never;
+
+// Given a dotted path P, resolve the scalar type at that path in T.
+// Assumes P is a valid ScalarPropPath<T>. Uses NonNullable when recursing so
+// that we walk the "present" branch of optional properties, while still
+// preserving optionality at the leaf via Extract<..., Scalar>.
+export type ScalarAtPath<
+  T,
+  P extends string,
+> = P extends `${infer K}.${infer Rest}`
+  ? K extends keyof NonNullable<T>
+    ? ScalarAtPath<NonNullable<T>[K], Rest>
+    : never
+  : P extends keyof NonNullable<T>
+    ? Extract<NonNullable<T>[P], Scalar>
+    : never;

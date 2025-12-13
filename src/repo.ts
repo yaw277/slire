@@ -5,14 +5,23 @@ import {
   Projection,
   RepoConfig,
 } from './repo-config';
-import { OptionalPropPath, Prettify, PrimitivePropPath } from './types';
+import {
+  OptionalPropPath,
+  Prettify,
+  ScalarAtPath,
+  ScalarPropPath,
+} from './types';
+
+export type Filter<T> = {
+  [P in ScalarPropPath<T>]?: ScalarAtPath<T, P>;
+};
 
 export type FindOptions<T> = {
   onScopeBreach?: 'empty' | 'error';
   orderBy?: OrderBy<T>;
 };
 
-export type OrderBy<T> = Partial<Record<PrimitivePropPath<T>, SortDirection>>;
+export type OrderBy<T> = Partial<Record<ScalarPropPath<T>, SortDirection>>;
 export type SortDirection =
   | 1
   | -1
@@ -36,6 +45,39 @@ export type PageResult<T> = {
   items: T[];
   nextCursor: string | undefined;
 };
+
+// Runtime helper to validate filters in case callers bypass TypeScript (casts)
+// or when a looser-typed variant is introduced. Ensures all filter values are
+// scalars (string | number | boolean | null | undefined | Date) and rejects
+// objects/arrays to keep behaviour aligned with Filter<T> semantics.
+export function validateFilterRuntime(
+  filter: any,
+  context: string = 'filter',
+): void {
+  if (filter == null) {
+    throw new Error(
+      `Invalid ${context}: filter must be an object (use {} for no filter), got ${filter}`,
+    );
+  }
+  if (typeof filter !== 'object' || Array.isArray(filter)) {
+    throw new Error(
+      `Invalid ${context}: filter must be an object (use {} for no filter), got value of type '${typeof filter}'`,
+    );
+  }
+
+  for (const [path, value] of Object.entries(filter)) {
+    if (value === undefined) continue;
+    if (
+      value !== null &&
+      typeof value === 'object' &&
+      !(value instanceof Date)
+    ) {
+      throw new Error(
+        `Invalid ${context}: filter value for '${path}' must be a scalar (string, number, boolean, Date, null, or undefined).`,
+      );
+    }
+  }
+}
 
 export type Repo<
   T extends { id: string },
@@ -84,9 +126,9 @@ export type Repo<
   delete(id: string, options?: { mergeTrace?: any }): Promise<void>;
   deleteMany(ids: string[], options?: { mergeTrace?: any }): Promise<void>;
 
-  find(filter: Partial<T>, options?: FindOptions<T>): QueryStream<T>;
+  find(filter: Filter<T>, options?: FindOptions<T>): QueryStream<T>;
   find<P extends Projection<T>>(
-    filter: Partial<T>,
+    filter: Filter<T>,
     options: FindOptions<T> & { projection: P },
   ): QueryStream<Projected<T, P>>;
   findBySpec<S extends Specification<T>>(
@@ -99,11 +141,11 @@ export type Repo<
   ): QueryStream<Projected<T, P>>;
 
   findPage(
-    filter: Partial<T>,
+    filter: Filter<T>,
     options: FindPageOptions<T>,
   ): Promise<PageResult<T>>;
   findPage<P extends Projection<T>>(
-    filter: Partial<T>,
+    filter: Filter<T>,
     options: FindPageOptions<T> & { projection: P },
   ): Promise<PageResult<Projected<T, P>>>;
   findPageBySpec<S extends Specification<T>>(
@@ -115,7 +157,7 @@ export type Repo<
     options: FindPageOptions<T> & { projection: P },
   ): Promise<PageResult<Projected<T, P>>>;
 
-  count(filter: Partial<T>, options?: CountOptions): Promise<number>;
+  count(filter: Filter<T>, options?: CountOptions): Promise<number>;
   countBySpec<S extends Specification<T>>(
     spec: S,
     options?: CountOptions,
@@ -129,7 +171,7 @@ export type UpdateOperation<T> =
 
 // Specification pattern types
 export type Specification<T> = {
-  toFilter(): Partial<T>;
+  toFilter(): Filter<T>;
   describe: string;
 };
 
@@ -156,7 +198,7 @@ export function combineSpecs<T>(
     toFilter: () =>
       specs.reduce(
         (filter, spec) => ({ ...filter, ...spec.toFilter() }),
-        {} as Partial<T>,
+        {} as Filter<T>,
       ),
     describe: specs.map((spec) => spec.describe).join(' AND '),
   };

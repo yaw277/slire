@@ -359,11 +359,11 @@ MongoDB notes:
 
 ### find
 
-`find(filter: Partial<T>, options?: FindOptions): QueryStream<T>`
+`find(filter: Filter<T>, options?: FindOptions): QueryStream<T>`
 
-`find<P extends Projection<T>>(filter: Partial<T>, options: FindOptions & { projection: P }): QueryStream<Projected<T, P>>`
+`find<P extends Projection<T>>(filter: Filter<T>, options: FindOptions & { projection: P }): QueryStream<Projected<T, P>>`
 
-Queries entities and returns a single‑use `QueryStream` (supports async iteration and `.toArray()`). Filters support exact equality on entity properties (no range operators). The repository applies scope rules and excludes soft‑deleted entities (when enabled). With projections, only the requested fields are returned and the result type reflects the projection.
+Queries entities and returns a single‑use `QueryStream` (supports async iteration and `.toArray()`). Filters support exact equality on **scalar properties** (no range operators): top‑level scalars (for example, `status`, `age`) and scalar leaf fields reached via dot‑paths (for example, `'metadata.assigneeId'`, `'metadata.priority'`). Object and array values are not accepted in filters; passing nested objects (for example, `{ metadata: { foo: 'bar' } }`) is rejected at runtime to avoid ambiguous “partial nested” semantics. The repository applies scope rules and excludes soft‑deleted entities (when enabled). With projections, only the requested fields are returned and the result type reflects the projection.
 
 The `FindOptions` parameter supports:
 
@@ -470,11 +470,11 @@ const tasks = await repo
 
 ### findPage
 
-`findPage(filter: Partial<T>, options: FindPageOptions): Promise<PageResult<T>>`
+`findPage(filter: Filter<T>, options: FindPageOptions): Promise<PageResult<T>>`
 
-`findPage<P extends Projection<T>>(filter: Partial<T>, options: FindPageOptions & { projection: P }): Promise<PageResult<Projected<T, P>>>`
+`findPage<P extends Projection<T>>(filter: Filter<T>, options: FindPageOptions & { projection: P }): Promise<PageResult<Projected<T, P>>>`
 
-Provides efficient cursor-based pagination for large datasets. Unlike `find().skip().take()` which becomes slower with larger offsets, `findPage` uses database-native cursors for consistent performance regardless of page depth.
+Provides efficient cursor-based pagination for large datasets. Unlike `find().skip().take()` which becomes slower with larger offsets, `findPage` uses database-native cursors for consistent performance regardless of page depth. The `filter` argument follows the same scalar and dot‑path rules as [`find`](#find).
 
 The `FindPageOptions` parameter includes:
 
@@ -573,9 +573,9 @@ do {
 
 ### count
 
-`count(filter: Partial<T>, options?: { onScopeBreach?: 'zero' | 'error' }): Promise<number>`
+`count(filter: Filter<T>, options?: { onScopeBreach?: 'zero' | 'error' }): Promise<number>`
 
-Returns the number of entities that match the filter (exact‑equality predicates). Applies scope rules and excludes soft‑deleted entities (when enabled). On scope‑breach, returns `0` by default (`onScopeBreach: 'zero'`) or throws when set to `'error'`. Returns `0` when no matches are found.
+Returns the number of entities that match the filter (exact‑equality predicates) using the same scalar and dot‑path rules as [`find`](#find). Applies scope rules and excludes soft‑deleted entities (when enabled). On scope‑breach, returns `0` by default (`onScopeBreach: 'zero'`) or throws when set to `'error'`. Returns `0` when no matches are found.
 
 Firestore notes:
 - Uses the server‑side count aggregation (`query.count().get()`); documents are not fetched.

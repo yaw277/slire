@@ -14,6 +14,7 @@ import chunk from 'lodash/chunk';
 import { QueryStream } from './query-stream';
 import {
   CreateManyPartialFailure,
+  Filter,
   type FindPageOptions,
   isAscending,
   OrderBy,
@@ -21,6 +22,7 @@ import {
   SortDirection,
   Specification,
   UpdateOperation,
+  validateFilterRuntime,
 } from './repo';
 import {
   ManagedFields,
@@ -642,13 +644,14 @@ export function createFirestoreRepo<
     },
 
     find: <P extends Projection<T>>(
-      filter: Partial<T>,
+      filter: Filter<T>,
       options?: {
         projection?: P;
         onScopeBreach?: 'empty' | 'error';
         orderBy?: OrderBy<T>;
       },
     ): QueryStream<Projected<T, P>> => {
+      validateFilterRuntime(filter, 'find filter');
       if (config.scopeBreach(filter)) {
         const mode = options?.onScopeBreach ?? 'empty';
         if (mode === 'error') {
@@ -735,12 +738,13 @@ export function createFirestoreRepo<
     },
 
     findPage: async <P extends Projection<T> | undefined>(
-      filter: Partial<T>,
+      filter: Filter<T>,
       options: FindPageOptions<T> & { projection?: P },
     ): Promise<{
       items: Projected<T, P>[];
       nextCursor: string | undefined;
     }> => {
+      validateFilterRuntime(filter, 'findPage filter');
       if (config.scopeBreach(filter)) {
         const mode = options.onScopeBreach ?? 'empty';
         if (mode === 'error') {
@@ -845,9 +849,10 @@ export function createFirestoreRepo<
     },
 
     count: async (
-      filter: Partial<T>,
+      filter: Filter<T>,
       options?: { onScopeBreach?: 'zero' | 'error' },
     ): Promise<number> => {
+      validateFilterRuntime(filter, 'count filter');
       let query: Query = collection;
 
       if (config.scopeBreach(filter)) {

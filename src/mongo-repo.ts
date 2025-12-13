@@ -4,6 +4,7 @@ import { getMongoMinFilter } from './get-mongo-min-filter';
 import { QueryStream } from './query-stream';
 import {
   CreateManyPartialFailure,
+  Filter,
   type FindPageOptions,
   isAscending,
   OrderBy,
@@ -11,6 +12,7 @@ import {
   SortDirection,
   Specification,
   UpdateOperation,
+  validateFilterRuntime,
 } from './repo';
 import {
   ManagedFields,
@@ -111,7 +113,7 @@ export function createMongoRepo<
     ({ _id: { $in: ids.map(toMongoId) } }) as any;
   const getPublicIdFromDoc = (doc: any): string =>
     fromMongoId((doc as any)._id);
-  const convertFilter = (filter: Partial<T>): any => {
+  const convertFilter = (filter: Filter<T>): any => {
     const f: any = { ...filter };
     if (f[idKey] !== undefined) {
       const val = f[idKey];
@@ -597,13 +599,14 @@ export function createMongoRepo<
     },
 
     find: <P extends Projection<T> | undefined>(
-      filter: Partial<T>,
+      filter: Filter<T>,
       options?: {
         projection?: P;
         onScopeBreach?: 'empty' | 'error';
         orderBy?: OrderBy<T>;
       },
     ): QueryStream<Projected<T, P>> => {
+      validateFilterRuntime(filter, 'find filter');
       if (config.scopeBreach(filter)) {
         const mode = options?.onScopeBreach ?? 'empty';
         if (mode === 'error') {
@@ -668,12 +671,13 @@ export function createMongoRepo<
     },
 
     findPage: async <P extends Projection<T> | undefined>(
-      filter: Partial<T>,
+      filter: Filter<T>,
       options: FindPageOptions<T> & { projection?: P },
     ): Promise<{
       items: Projected<T, P>[];
       nextCursor: string | undefined;
     }> => {
+      validateFilterRuntime(filter, 'findPage filter');
       if (config.scopeBreach(filter)) {
         const mode = options.onScopeBreach ?? 'empty';
         if (mode === 'error') {
@@ -781,9 +785,10 @@ export function createMongoRepo<
     },
 
     count: async (
-      filter: Partial<T>,
+      filter: Filter<T>,
       options?: { onScopeBreach?: 'zero' | 'error' },
     ): Promise<number> => {
+      validateFilterRuntime(filter, 'count filter');
       if (config.scopeBreach(filter)) {
         const mode = options?.onScopeBreach ?? 'zero';
         if (mode === 'error') {
