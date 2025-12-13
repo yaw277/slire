@@ -104,7 +104,7 @@ export function createFirestoreRepo<
   firestore: Firestore;
   scope?: Scope;
   traceContext?: any;
-  options?: Config;
+  options?: FirestoreRepoConfig<T> & Config;
   transaction?: Transaction;
 }): FirestoreRepo<T, Scope, Config, Managed, UpdateInput, CreateInput> {
   const config = repoConfig(options ?? ({} as Config), traceContext, scope);
@@ -904,7 +904,7 @@ export function createFirestoreRepo<
         firestore,
         scope,
         traceContext,
-        options: { ...options },
+        options,
         transaction: tx,
       });
     },

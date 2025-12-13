@@ -92,7 +92,7 @@ export function createMongoRepo<
   mongoClient: MongoClient;
   scope?: Scope;
   traceContext?: any;
-  options?: Config;
+  options?: RepoConfig<T> & Config;
   session?: ClientSession;
 }): MongoRepo<T, Scope, Config, Managed, UpdateInput, CreateInput> {
   const config = repoConfig(options ?? ({} as Config), traceContext, scope);
@@ -832,7 +832,7 @@ export function createMongoRepo<
         mongoClient,
         scope,
         traceContext,
-        options: { ...options },
+        options,
         session: clientSession,
       });
     },
